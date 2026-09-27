@@ -1,98 +1,56 @@
-import React from 'react';
+'use client';
+
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { AuthService } from '@/lib/auth';
-import { ContentService } from '@/lib/content';
-import { ChevronLeft, BookOpen } from 'lucide-react';
+import { UserProfile } from '@/types';
+import StudentDetailView from '@/components/students/StudentDetailView';
 
-interface StudentDetailPageProps {
-  params: Promise<{ id: string }>;
-}
+export default function AdminStudentDetailPage() {
+  const params = useParams();
+  const studentId = params?.id as string;
 
-export default async function StudentDetailPage({ params }: StudentDetailPageProps) {
-  const { id } = await params;
-  const student = await AuthService.getStudentById(id);
+  const [student, setStudent] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  if (!student) {
-    notFound();
+  useEffect(() => {
+    async function loadStudent() {
+      setLoading(true);
+      const found = await AuthService.getStudentById(studentId);
+      if (found) {
+        setStudent(found);
+      }
+      setLoading(false);
+    }
+    loadStudent();
+  }, [studentId]);
+
+  if (loading) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-[#d8a471] border-t-transparent animate-spin" />
+      </div>
+    );
   }
 
-  const courses = ContentService.getCourses();
-
-  return (
-    <div className="max-w-6xl mx-auto space-y-8">
-      
-      {/* BREADCRUMB */}
-      <div>
-        <Link
-          href="/admin/students"
-          className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800"
-        >
-          <ChevronLeft className="w-4 h-4" /> Back to Students List
+  if (!student) {
+    return (
+      <div className="max-w-4xl mx-auto py-12 text-center space-y-4">
+        <h2 className="text-xl font-bold text-[#171819]">Student Profile Not Found</h2>
+        <Link href="/admin/students" className="text-xs text-[#8e5a2b] font-bold hover:underline">
+          Return to Students Directory
         </Link>
       </div>
+    );
+  }
 
-      {/* STUDENT PROFILE CARD */}
-      <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 space-y-6 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-blue-600 flex items-center justify-center text-white text-xl font-bold border border-blue-500 shadow-xs">
-              {student.fullName.charAt(0)}
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900">{student.fullName}</h1>
-              <p className="text-xs text-slate-500 mt-0.5">{student.email}</p>
-              <div className="flex items-center gap-2 mt-2">
-                <span className="px-2.5 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-800 border border-blue-200">
-                  ID: {student.studentId}
-                </span>
-                <span className="px-2.5 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                  {student.classGroup || 'General Batch'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="text-right">
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase ${
-              student.isActive ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
-            }`}>
-              {student.isActive ? 'Active Student' : 'Account Deactivated'}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* COURSE PROGRESS BREAKDOWN */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-          <BookOpen className="w-5 h-5 text-blue-600" /> Enrolled Course Progress
-        </h2>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {courses.map(course => (
-            <div key={course.id} className="bg-white p-6 rounded-xl border border-slate-200 space-y-4 shadow-xs">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] text-blue-600 font-bold uppercase">{course.subjectName}</span>
-                  <h3 className="font-bold text-slate-900 text-base leading-snug">{course.title}</h3>
-                </div>
-                <span className="text-lg font-bold text-emerald-600">Active</span>
-              </div>
-
-              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-blue-600 h-full rounded-full" style={{ width: '50%' }} />
-              </div>
-
-              <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
-                <span>{course.lessonCount} Lessons Total</span>
-                <span className="text-blue-600 font-semibold">{course.level} Track</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-    </div>
+  return (
+    <StudentDetailView
+      student={student}
+      role="admin"
+      backHref="/admin/students"
+      onStudentUpdated={(updated) => setStudent(updated)}
+    />
   );
 }

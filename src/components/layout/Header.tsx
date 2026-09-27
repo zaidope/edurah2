@@ -3,147 +3,180 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Search, BookOpen, Layers, Award, Info, Shield, Menu, X, Sparkles, LogIn, LayoutDashboard } from 'lucide-react';
-import SearchModal from '@/components/search/SearchModal';
-import MobileDrawer from '@/components/layout/MobileDrawer';
+import { Menu, X, ArrowUpRight, LogOut, LayoutDashboard, GraduationCap, Shield } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import EdurahLogo from '@/components/branding/EdurahLogo';
+import NotificationBell from '@/components/notifications/NotificationBell';
+
+const publicNavLinks = [
+  { name: 'Home', href: '/' },
+  { name: 'Courses', href: '/courses' },
+  { name: 'Subjects', href: '/subjects' },
+  { name: 'About', href: '/about' },
+  { name: 'Contact', href: '/contact' },
+];
 
 export default function Header() {
   const pathname = usePathname();
-  const { profile } = useAuth();
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { profile, logout } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  const isAdminRoute = pathname.startsWith('/admin');
+  // Hide the global header on internal admin and teacher workspaces (they have their own sidebars)
+  const isInternalWorkspace = pathname.startsWith('/admin') || (pathname.startsWith('/teacher') && pathname !== '/teacher/login');
+  if (isInternalWorkspace) return null;
 
-  const navLinks = [
-    { name: 'Subjects', href: '/subjects', icon: Layers },
-    { name: 'Courses', href: '/courses', icon: BookOpen },
-    { name: 'Quizzes', href: '/quizzes', icon: Award },
-    { name: 'About', href: '/about', icon: Info },
-  ];
+  const isHome = pathname === '/';
 
+  // Role-appropriate links
+  let links = publicNavLinks;
   if (profile) {
-    navLinks.unshift({ name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard });
+    if (profile.role === 'student') {
+      links = [
+        { name: 'Dashboard', href: '/dashboard' },
+        { name: 'My Courses', href: '/courses' },
+        { name: 'Subjects', href: '/subjects' },
+        { name: 'Progress', href: '/my-learning' },
+        { name: 'Profile', href: '/profile' },
+      ];
+    } else if (profile.role === 'teacher') {
+      links = [
+        { name: 'Faculty Hub', href: '/teacher' },
+        { name: 'Course Catalog', href: '/courses' },
+        { name: 'Subjects', href: '/subjects' },
+      ];
+    } else if (profile.role === 'admin') {
+      links = [
+        { name: 'Admin Console', href: '/admin' },
+        { name: 'Course Catalog', href: '/courses' },
+        { name: 'Subjects', href: '/subjects' },
+      ];
+    }
   }
 
+  const linkClass = (href: string) => {
+    const isActive = pathname === href;
+    if (isHome) {
+      return `text-xs font-semibold tracking-wider uppercase transition-colors ${
+        isActive ? 'text-[#e6b981]' : 'text-[#e9e4d7]/70 hover:text-[#e9e4d7]'
+      }`;
+    }
+    return `text-xs font-semibold tracking-wider uppercase transition-colors ${
+      isActive ? 'text-[#81512f] font-bold' : 'text-[#555048] hover:text-[#171819]'
+    }`;
+  };
+
   return (
-    <>
-      <header className="sticky top-0 z-40 w-full bg-white/95 border-b border-slate-200/90 backdrop-blur-md transition-colors">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            
-            {/* LOGO */}
-            <div className="flex items-center gap-6">
-              <Link href="/" className="flex items-center gap-2.5 group">
-                <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-xs group-hover:bg-blue-700 transition-colors">
-                  <Sparkles className="w-4 h-4 text-white" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="font-bold text-xl tracking-tight text-slate-900 group-hover:text-blue-600 transition-colors">
-                    Edurah
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-medium tracking-wider uppercase -mt-1">
-                    Learning Platform
-                  </span>
-                </div>
-              </Link>
+    <header
+      className={`relative z-50 transition-colors duration-300 ${
+        isHome
+          ? 'bg-[#0b0d0e] text-[#e9e4d7] border-b border-white/10'
+          : 'border-b border-[#d8d0c2] bg-[#f6f2e9]/95 text-[#171819] backdrop-blur-md'
+      }`}
+    >
+      <div className="mx-auto flex h-18 max-w-7xl items-center justify-between px-5 sm:px-8">
+        {/* LOGO */}
+        <EdurahLogo theme={isHome ? 'dark' : 'light'} size="md" />
 
-              {/* DESKTOP NAV LINKS */}
-              {!isAdminRoute && (
-                <nav className="hidden md:flex items-center gap-1 ml-4">
-                  {navLinks.map((link) => {
-                    const Icon = link.icon;
-                    const isActive = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href));
-                    return (
-                      <Link
-                        key={link.name}
-                        href={link.href}
-                        className={`flex items-center gap-2 px-3.5 py-2 rounded-md text-sm font-medium transition-all ${
-                          isActive
-                            ? 'bg-blue-50 text-blue-700 font-semibold'
-                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                        }`}
-                      >
-                        <Icon className="w-4 h-4" />
-                        {link.name}
-                      </Link>
-                    );
-                  })}
-                </nav>
-              )}
-            </div>
+        {/* DESKTOP NAVIGATION */}
+        <nav className="hidden items-center gap-7 md:flex">
+          {links.map((link) => (
+            <Link key={link.href} href={link.href} className={linkClass(link.href)}>
+              {link.name}
+            </Link>
+          ))}
+        </nav>
 
-            {/* RIGHT SIDE ACTIONS */}
+        {/* AUTH ACTIONS */}
+        <div className="hidden items-center gap-4 md:flex">
+          {profile ? (
             <div className="flex items-center gap-3">
-              {/* SEARCH BUTTON */}
+              <NotificationBell theme={isHome ? 'dark' : 'light'} />
+              <div className="flex items-center gap-2">
+                {profile.role === 'teacher' && <GraduationCap className="w-3.5 h-3.5 text-[#81512f]" />}
+                {profile.role === 'admin' && <Shield className="w-3.5 h-3.5 text-[#81512f]" />}
+                <span className={`text-xs font-medium ${isHome ? 'text-[#e9e4d7]/75' : 'text-[#555048]'}`}>
+                  {profile.fullName}
+                </span>
+              </div>
               <button
-                onClick={() => setIsSearchOpen(true)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-100 border border-slate-200/80 text-slate-600 hover:text-slate-900 hover:bg-slate-200/70 text-xs font-medium transition-all cursor-pointer"
+                onClick={() => void logout()}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border transition-all cursor-pointer ${
+                  isHome
+                    ? 'border-white/20 text-[#e9e4d7] hover:bg-white/10'
+                    : 'border-[#d8d0c2] text-[#171819] hover:bg-[#ede8dc]'
+                }`}
               >
-                <Search className="w-3.5 h-3.5 text-slate-500" />
-                <span className="hidden sm:inline">Search courses, lessons...</span>
-                <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] bg-white border border-slate-200 rounded text-slate-500 font-mono">
-                  ⌘K
-                </kbd>
+                <LogOut className="h-3 w-3" /> Sign Out
               </button>
+            </div>
+          ) : (
+            <Link
+              href="/login"
+              className="inline-flex items-center gap-2 bg-[#d8a471] px-4 py-2 text-xs font-bold uppercase tracking-wider text-[#172020] transition-transform hover:-translate-y-0.5 hover:bg-[#e8b57c] active:translate-y-0"
+            >
+              Sign In <ArrowUpRight className="h-3.5 w-3.5" />
+            </Link>
+          )}
+        </div>
 
-              {/* AUTH USER PROFILE BADGE / LOGIN LINK */}
+        {/* MOBILE MENU TOGGLE */}
+        <button
+          onClick={() => setMenuOpen(!menuOpen)}
+          className={`p-2 md:hidden ${isHome ? 'text-[#e9e4d7]' : 'text-[#171819]'}`}
+          aria-label="Toggle navigation menu"
+        >
+          {menuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+        </button>
+      </div>
+
+      {/* MOBILE DRAWER */}
+      {menuOpen && (
+        <div
+          className={`border-t px-6 py-6 md:hidden ${
+            isHome ? 'border-white/10 bg-[#101719]' : 'border-[#d8d0c2] bg-[#f6f2e9]'
+          }`}
+        >
+          <nav className="flex flex-col gap-4">
+            {links.map((link) => (
+              <Link
+                key={link.href}
+                onClick={() => setMenuOpen(false)}
+                href={link.href}
+                className={`py-1 text-sm font-medium ${
+                  isHome ? 'text-[#e9e4d7] hover:text-[#d8a471]' : 'text-[#171819] hover:text-[#81512f]'
+                }`}
+              >
+                {link.name}
+              </Link>
+            ))}
+
+            <div className="pt-4 border-t border-current/10 flex items-center justify-between">
               {profile ? (
-                <div className="flex items-center gap-2">
-                  <Link
-                    href="/profile"
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-100 border border-slate-200 text-xs text-slate-800 hover:bg-slate-200/70 transition-colors font-medium"
+                <div className="w-full flex items-center justify-between">
+                  <span className="text-xs font-medium text-current/70">{profile.fullName}</span>
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void logout();
+                    }}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 border border-current/20"
                   >
-                    <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-[10px] font-bold">
-                      {profile.fullName.charAt(0)}
-                    </div>
-                    <span className="hidden sm:inline font-medium">{profile.fullName}</span>
-                  </Link>
-
-                  {profile.role === 'admin' && (
-                    <Link
-                      href={isAdminRoute ? '/' : '/admin'}
-                      className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                        isAdminRoute
-                          ? 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
-                          : 'bg-blue-600 text-white hover:bg-blue-700 shadow-xs'
-                      }`}
-                    >
-                      <Shield className="w-3.5 h-3.5 text-amber-300" />
-                      <span>{isAdminRoute ? 'Exit Admin' : 'Admin Panel'}</span>
-                    </Link>
-                  )}
+                    <LogOut className="h-3 w-3" /> Sign Out
+                  </button>
                 </div>
               ) : (
                 <Link
                   href="/login"
-                  className="flex items-center gap-2 px-3.5 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-all shadow-xs"
+                  onClick={() => setMenuOpen(false)}
+                  className="w-full text-center bg-[#d8a471] py-2.5 text-xs font-bold uppercase tracking-wider text-[#172020]"
                 >
-                  <LogIn className="w-3.5 h-3.5" />
-                  <span>Student Login</span>
+                  Sign In
                 </Link>
               )}
-
-              {/* MOBILE MENU TOGGLE */}
-              <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="md:hidden p-2 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-100 focus:outline-none"
-                aria-label="Toggle Navigation Menu"
-              >
-                {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-              </button>
             </div>
-          </div>
+          </nav>
         </div>
-      </header>
-
-      {/* SEARCH MODAL */}
-      <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
-
-      {/* MOBILE DRAWER */}
-      <MobileDrawer isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
-    </>
+      )}
+    </header>
   );
 }
-

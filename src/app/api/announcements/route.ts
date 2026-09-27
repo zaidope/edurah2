@@ -1,0 +1,118 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { CommunicationService } from '@/lib/communication';
+
+const CreateAnnouncementSchema = z.object({
+  scope: z.enum(['institution', 'course', 'grade']),
+  title: z.string().min(3, 'Title must be at least 3 characters').max(250),
+  bodyMd: z.string().min(1, 'Body content is required'),
+  pinned: z.boolean().optional(),
+  courseId: z.string().optional(),
+  gradeId: z.string().optional(),
+  publishAt: z.string().optional(),
+  emailFanout: z.boolean().optional(),
+});
+
+export async function GET(req: NextRequest) {
+  try {
+    const url = new URL(req.url);
+    const scope = url.searchParams.get('scope') as 'institution' | 'course' | 'grade' | null;
+    const courseId = url.searchParams.get('courseId') || undefined;
+    const gradeId = url.searchParams.get('gradeId') || undefined;
+
+    const announcements = CommunicationService.getAnnouncements({
+      scope: scope || undefined,
+      courseId,
+      gradeId,
+    });
+
+    return NextResponse.json({
+      data: { announcements },
+      error: null,
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { data: null, error: { code: 'INTERNAL_ERROR', message: err.message || 'Failed to fetch announcements' } },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const authHeader = req.headers.get('authorization');
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+
+    if (!token) {
+      return NextResponse.json(
+        { data: null, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
+        { status: 401 }
+      );
+    }
+
+    let supabaseAdmin;
+    try {
+      supabaseAdmin = getSupabaseAdmin();
+    } catch {
+      return NextResponse.json(
+        { data: null, error: { code: 'UNAVAILABLE', message: 'Database service unavailable' } },
+        { status: 503 }
+      );
+    }
+
+    const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(token);
+    if (authErr || !user) {
+      return NextResponse.json(
+        { data: null, error: { code: 'UNAUTHORIZED', message: 'Invalid session' } },
+        { status: 401 }
+      );
+    }
+
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('role, full_name')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    const role = profile?.role || user.user_metadata?.role;
+    if (role !== 'teacher' && role !== 'admin') {
+      return NextResponse.json(
+        { data: null, error: { code: 'FORBIDDEN', message: 'Faculty privileges required' } },
+        { status: 403 }
+      );
+    }
+
+    const json = await req.json();
+    const parseResult = CreateAnnouncementSchema.safeParse(json);
+    if (!parseResult.success) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: parseResult.error.issues[0]?.message || 'Invalid announcement schema',
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    const authorName = profile?.full_name || user.user_metadata?.full_name || 'Faculty Member';
+    const announcement = CommunicationService.createAnnouncement(parseResult.data, {
+      id: user.id,
+      name: authorName,
+      role,
+    });
+
+    return NextResponse.json({
+      data: { announcement },
+      error: null,
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { data: null, error: { code: 'INTERNAL_ERROR', message: err.message || 'Failed to create announcement' } },
+      { status: 500 }
+    );
+  }
+}

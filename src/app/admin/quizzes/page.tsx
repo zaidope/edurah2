@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Quiz } from '@/types';
 import { ContentService } from '@/lib/content';
+import { GRADES } from '@/content/grades';
 import { Award, Plus, Edit2, Trash2, X } from 'lucide-react';
 
 export default function AdminQuizzesPage() {
@@ -26,6 +27,7 @@ export default function AdminQuizzesPage() {
       id: editingQuiz.id || `quiz-${Date.now()}`,
       title: editingQuiz.title,
       description: editingQuiz.description || '',
+      gradeId: editingQuiz.gradeId || 'grade-1',
       passingScore: editingQuiz.passingScore || 70,
       questions: editingQuiz.questions
     };
@@ -72,6 +74,7 @@ export default function AdminQuizzesPage() {
             setEditingQuiz({
               title: '',
               description: '',
+              gradeId: 'grade-1',
               passingScore: 75,
               questions: [
                 {
@@ -162,7 +165,22 @@ export default function AdminQuizzesPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Target Grade</label>
+                  <select
+                    value={editingQuiz?.gradeId || 'grade-1'}
+                    onChange={e => setEditingQuiz({ ...editingQuiz, gradeId: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 font-medium"
+                  >
+                    {GRADES.map(g => (
+                      <option key={g.id} value={g.id}>
+                        {g.name} ({g.tier.toUpperCase()})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="space-y-1">
                   <label className="font-semibold text-slate-700">Passing Score (%)</label>
                   <input

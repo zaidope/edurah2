@@ -1,138 +1,235 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { useParams, notFound } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
 import { ContentService } from '@/lib/content';
 import CourseSyllabus from '@/components/course/CourseSyllabus';
-import { 
-  BookOpen, 
-  Clock, 
-  Star, 
-  ChevronLeft, 
-  PlayCircle, 
-  Calendar 
+import {
+  BookOpen,
+  Clock,
+  Star,
+  ChevronLeft,
+  PlayCircle,
+  Calendar,
+  Lock,
+  ArrowRight,
+  ShieldCheck,
+  Award
 } from 'lucide-react';
+import PageTransition from '@/components/layout/PageTransition';
+import AnimatedPage from '@/components/layout/AnimatedPage';
+import CourseDiscussionBoard from '@/components/discussions/CourseDiscussionBoard';
+import AnnouncementsFeed from '@/components/announcements/AnnouncementsFeed';
 
-interface CoursePageProps {
-  params: Promise<{ slug: string }>;
-}
+export default function CourseDetailPage() {
+  const params = useParams();
+  const slug = params?.slug as string;
+  const { profile, loading } = useAuth();
 
-export default async function CourseDetailPage({ params }: CoursePageProps) {
-  const { slug } = await params;
   const course = ContentService.getCourseBySlug(slug);
+
+  if (loading) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-[#d8a471] border-t-transparent animate-spin" />
+      </div>
+    );
+  }
 
   if (!course) {
     notFound();
   }
 
-  // Get first lesson to direct user
+  const courseGradeObj = ContentService.getGradeById(course.gradeId);
+  const userGradeObj = profile?.gradeId ? ContentService.getGradeById(profile.gradeId) : null;
+
+  // Grade boundary status
+  const isEnrolledInGrade = profile && (profile.role === 'admin' || profile.gradeId === course.gradeId);
+  const isEnrolledInOtherGrade = profile && profile.role === 'student' && profile.gradeId !== course.gradeId;
+
+  // First lesson target
   const firstLesson = course.chapters[0]?.lessons[0];
+  const lessonHref = firstLesson ? `/courses/${course.slug}/lessons/${firstLesson.slug}` : '#';
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
-      
-      {/* BREADCRUMB */}
-      <div>
-        <Link
-          href="/courses"
-          className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800"
-        >
-          <ChevronLeft className="w-4 h-4" /> All Courses
-        </Link>
-      </div>
-
-      {/* COURSE HEADER HERO */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        
-        {/* LEFT COLUMN: TITLE & OVERVIEW */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-800 border border-blue-200">
-              {course.subjectName}
-            </span>
-            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-              {course.level} Level
-            </span>
-            <div className="flex items-center gap-1 text-amber-600 text-xs font-semibold">
-              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-              <span>{course.rating} Rating</span>
-            </div>
-          </div>
-
-          <h1 className="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight">
-            {course.title}
-          </h1>
-
-          <p className="text-base text-slate-600 leading-relaxed">
-            {course.description}
-          </p>
-
-          {/* INSTRUCTOR BADGE */}
-          <div className="p-4 rounded-xl bg-white border border-slate-200 flex items-center gap-4 shadow-xs">
-            <img
-              src={course.instructor.avatar}
-              alt={course.instructor.name}
-              className="w-12 h-12 rounded-full object-cover border border-slate-200"
-            />
-            <div>
-              <div className="text-xs font-bold text-blue-600 uppercase tracking-wider">Instructor</div>
-              <div className="font-bold text-slate-900 text-base">{course.instructor.name}</div>
-              <div className="text-xs text-slate-500">{course.instructor.bio}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT COLUMN: ACTION CARD */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200 space-y-6 sticky top-24 shadow-xs">
-          <div className="relative aspect-video rounded-lg overflow-hidden bg-slate-100 border border-slate-200">
-            <img
-              src={course.thumbnail}
-              alt={course.title}
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-slate-950/40 flex items-center justify-center">
-              <PlayCircle className="w-12 h-12 text-white" />
-            </div>
-          </div>
-
-          <div className="space-y-3 text-xs text-slate-600">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <span className="flex items-center gap-2 text-slate-500"><Clock className="w-4 h-4 text-slate-400" /> Total Duration</span>
-              <span className="font-bold text-slate-900">{course.duration}</span>
-            </div>
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <span className="flex items-center gap-2 text-slate-500"><BookOpen className="w-4 h-4 text-slate-400" /> Lessons</span>
-              <span className="font-bold text-slate-900">{course.lessonCount} Modules</span>
-            </div>
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <span className="flex items-center gap-2 text-slate-500"><Calendar className="w-4 h-4 text-slate-400" /> Last Updated</span>
-              <span className="font-bold text-slate-900">{course.updatedAt}</span>
-            </div>
-          </div>
-
-          {firstLesson && (
+    <PageTransition>
+      <AnimatedPage>
+        <div className="max-w-7xl mx-auto px-5 sm:px-8 py-10 space-y-10">
+          
+          {/* BREADCRUMB & GRADE BADGE */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#d8d0c2] pb-4">
             <Link
-              href={`/courses/${course.slug}/lessons/${firstLesson.slug}`}
-              className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-all cursor-pointer shadow-xs"
+              href="/courses"
+              className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#81512f] hover:text-[#171819] transition-colors"
             >
-              <PlayCircle className="w-5 h-5 text-white" />
-              <span>Start Learning Now</span>
+              <ChevronLeft className="w-4 h-4" /> Back to Course Catalog
             </Link>
-          )}
+
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 text-xs font-bold uppercase tracking-wider bg-[#f3e5d4] text-[#81512f] border border-[#d8a471]/40">
+                {courseGradeObj?.name} Curriculum
+              </span>
+              <span className="px-3 py-1 text-xs font-bold uppercase tracking-wider bg-[#101719] text-[#e6b981] border border-[#d8a471]/30">
+                {course.subjectName}
+              </span>
+            </div>
+          </div>
+
+          {/* COURSE HEADER HERO */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 items-start">
+            
+            {/* LEFT COLUMN: TITLE & OVERVIEW */}
+            <div className="lg:col-span-2 space-y-6">
+              <div className="space-y-3">
+                <p className="edurah-eyebrow">
+                  <span /> Course Overview & Syllabus
+                </p>
+
+                <h1 className="font-serif-hero text-3xl sm:text-5xl font-normal text-[#171819] tracking-tight leading-tight">
+                  {course.title}
+                </h1>
+              </div>
+
+              <p className="text-sm sm:text-base text-[#555048] leading-relaxed">
+                {course.description}
+              </p>
+
+              <div className="flex flex-wrap items-center gap-6 text-xs text-[#706b63] pt-4 border-t border-[#e8e2d5]">
+                <div className="flex items-center gap-2 font-medium">
+                  <Clock className="w-4 h-4 text-[#a59e93]" />
+                  <span>{course.duration} Total Duration</span>
+                </div>
+                <div className="flex items-center gap-2 font-medium">
+                  <BookOpen className="w-4 h-4 text-[#a59e93]" />
+                  <span>{course.lessonCount} Structured Lessons</span>
+                </div>
+                <div className="flex items-center gap-2 font-medium">
+                  <Star className="w-4 h-4 fill-[#d8a471] text-[#d8a471]" />
+                  <span>{course.rating} Student Rating</span>
+                </div>
+                <div className="flex items-center gap-2 font-medium">
+                  <Calendar className="w-4 h-4 text-[#a59e93]" />
+                  <span>Curriculum Verified for 2026</span>
+                </div>
+              </div>
+
+              {/* GUEST BANNER / OTHER GRADE BANNER */}
+              {!profile && (
+                <div className="p-4 bg-[#fcfbf9] border border-[#d8d0c2] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <span className="text-xs font-bold uppercase tracking-wider text-[#171819] block">
+                      Exploring Edurah Curriculum
+                    </span>
+                    <p className="text-xs text-[#555048]">
+                      You can review all lesson outlines and objectives below. Sign in to watch video lectures, take quizzes, and track completion.
+                    </p>
+                  </div>
+                  <Link
+                    href={`/login?returnUrl=${encodeURIComponent(lessonHref)}`}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#d8a471] hover:bg-[#e8b57c] text-[#172020] text-xs font-bold uppercase tracking-wider transition-colors flex-shrink-0"
+                  >
+                    <span>Sign In to Learn</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              )}
+
+              {isEnrolledInOtherGrade && (
+                <div className="p-4 bg-[#fbf9f5] border border-[#d8d0c2] text-xs text-[#555048] space-y-1">
+                  <div className="font-bold text-[#81512f] uppercase tracking-wider">
+                    Grade Notice
+                  </div>
+                  <p>
+                    You are enrolled in <strong>{userGradeObj?.name}</strong>. You are currently reviewing the public syllabus for <strong>{courseGradeObj?.name}</strong>. Your active learning dashboard is tailored to your assigned grade.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* RIGHT COLUMN: ACTION CARD */}
+            <div className="bg-white p-6 border border-[#d8d0c2] shadow-sm space-y-6">
+              <div className="relative aspect-video overflow-hidden bg-[#ede8dc] border border-[#d8d0c2]">
+                <img
+                  src={course.thumbnail}
+                  alt={course.title}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+
+              <div className="space-y-4">
+                {/* PRIMARY ACTION BUTTON */}
+                {profile ? (
+                  isEnrolledInGrade ? (
+                    <Link
+                      href={lessonHref}
+                      className="w-full py-3.5 bg-[#171819] hover:bg-[#0b0d0e] text-[#f6f2e9] font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    >
+                      <PlayCircle className="w-4 h-4 text-[#d8a471]" /> Start Lesson Sequence
+                    </Link>
+                  ) : (
+                    <div className="text-center p-3 bg-[#fbf9f5] border border-[#d8d0c2] text-xs text-[#706b63]">
+                      Restricted to {courseGradeObj?.name} enrolled students
+                    </div>
+                  )
+                ) : (
+                  <Link
+                    href={`/login?returnUrl=${encodeURIComponent(lessonHref)}`}
+                    className="w-full py-3.5 bg-[#d8a471] hover:bg-[#e8b57c] text-[#172020] font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  >
+                    <Lock className="w-4 h-4" /> Sign In to Access Lessons
+                  </Link>
+                )}
+
+                {/* INSTRUCTOR CARD */}
+                <div className="p-4 bg-[#fcfbf9] border border-[#e8e2d5] space-y-3">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#81512f] block">
+                    Curriculum Instructor
+                  </span>
+                  <div className="flex items-start gap-3">
+                    <img
+                      src={course.instructor.avatar}
+                      alt={course.instructor.name}
+                      className="w-10 h-10 rounded-full object-cover border border-[#d8d0c2] flex-shrink-0"
+                    />
+                    <div className="space-y-1">
+                      <span className="font-bold text-xs text-[#171819] block">{course.instructor.name}</span>
+                      <span className="text-[#706b63] text-[11px] block">{course.instructor.role}</span>
+                      <p className="text-[11px] text-[#555048] leading-relaxed pt-1">{course.instructor.bio}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* COURSE ANNOUNCEMENTS */}
+          <div className="space-y-4 pt-8 border-t border-[#d8d0c2]">
+            <AnnouncementsFeed scope="course" courseId={course.id} />
+          </div>
+
+          {/* SYLLABUS BREAKDOWN */}
+          <div className="space-y-6 pt-8 border-t border-[#d8d0c2]">
+            <div className="space-y-1">
+              <p className="edurah-eyebrow">
+                <span /> Structured Units
+              </p>
+              <h2 className="font-serif-heading text-2xl sm:text-3xl font-normal text-[#171819]">
+                Course Chapters & Lesson Breakdown
+              </h2>
+            </div>
+            <CourseSyllabus chapters={course.chapters} courseSlug={course.slug} />
+          </div>
+
+          {/* COURSE DISCUSSION FORUM */}
+          <div className="space-y-6 pt-8 border-t border-[#d8d0c2]">
+            <CourseDiscussionBoard courseId={course.id} />
+          </div>
+
         </div>
-
-      </div>
-
-      {/* SYLLABUS SECTION */}
-      <section className="space-y-6 pt-6 border-t border-slate-200">
-        <div className="border-b border-slate-200 pb-4">
-          <h2 className="text-2xl font-bold text-slate-900">Course Curriculum & Syllabus</h2>
-          <p className="text-xs text-slate-500 mt-1">Explore all chapters, video lessons, and interactive quizzes.</p>
-        </div>
-
-        <CourseSyllabus chapters={course.chapters} courseSlug={course.slug} />
-      </section>
-
-    </div>
+      </AnimatedPage>
+    </PageTransition>
   );
 }
-

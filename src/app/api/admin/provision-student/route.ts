@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { fullName, email, studentId, classGroup, password } = body;
+    const { fullName, email, studentId, gradeId, classGroup, academicBatch, password } = body;
 
     if (!fullName || !email || !studentId) {
       return NextResponse.json(
@@ -51,6 +51,9 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    const assignedGradeId = gradeId || 'grade-1';
+    const assignedBatch = academicBatch || classGroup || '2025–2026';
 
     // 1. Create Supabase Auth User with admin privileges on the server (ALWAYS forced to role: 'student')
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
@@ -61,6 +64,8 @@ export async function POST(req: NextRequest) {
         full_name: fullName,
         student_id: studentId,
         role: 'student',
+        grade_id: assignedGradeId,
+        academic_batch: assignedBatch,
       },
     });
 
@@ -74,18 +79,35 @@ export async function POST(req: NextRequest) {
     const userId = authData.user.id;
 
     // 2. Insert corresponding profile row into public.profiles (ALWAYS forced to role: 'student')
-    const { error: profileError } = await supabaseAdmin
+    const profilePayload: Record<string, any> = {
+      id: userId,
+      full_name: fullName,
+      email: email,
+      student_id: studentId,
+      role: 'student',
+      grade_id: assignedGradeId,
+      academic_batch: assignedBatch,
+      class_group: classGroup || assignedBatch,
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    };
+
+    let { error: profileError } = await supabaseAdmin
       .from('profiles')
-      .upsert({
-        id: userId,
-        full_name: fullName,
-        email: email,
-        student_id: studentId,
-        role: 'student',
-        class_group: classGroup || 'General Batch',
-        is_active: true,
-        updated_at: new Date().toISOString(),
-      });
+      .upsert(profilePayload);
+
+    // Resilient fallback: If public.profiles is missing the grade_id column in Supabase schema cache
+    if (profileError && (profileError.message?.includes('grade_id') || profileError.details?.includes('grade_id'))) {
+      const fallbackPayload = { ...profilePayload };
+      delete fallbackPayload.grade_id;
+      if (!classGroup) {
+        fallbackPayload.class_group = assignedGradeId;
+      }
+      const retryResult = await supabaseAdmin
+        .from('profiles')
+        .upsert(fallbackPayload);
+      profileError = retryResult.error;
+    }
 
     // Rollback / clean up orphaned Auth user if profile record creation fails
     if (profileError) {
@@ -102,6 +124,7 @@ export async function POST(req: NextRequest) {
       email,
       studentId,
       role: 'student' as const,
+      gradeId: assignedGradeId,
       classGroup: classGroup || 'General Batch',
       isActive: true,
       createdAt: new Date().toISOString().split('T')[0],

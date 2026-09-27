@@ -1,95 +1,85 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
-import { Sparkles, ArrowUpRight, Globe, Share2, Mail } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { Globe, Share2, Mail, Sparkles } from 'lucide-react';
+import EdurahLogo from '@/components/branding/EdurahLogo';
 
 export default function Footer() {
+  const pathname = usePathname();
+  const isHomePage = pathname === '/';
+  const isInternal = pathname.startsWith('/admin') || (pathname.startsWith('/teacher') && pathname !== '/teacher/login');
+  if (isHomePage || isInternal) return null;
+
   return (
-    <footer className="border-t border-slate-200 bg-white text-slate-600 pt-16 pb-12 mt-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-10 pb-12 border-b border-slate-200">
+    <footer className="border-t border-[#d8d0c2] bg-[#ede8dc] text-[#555048] pt-16 pb-12 mt-20">
+      <div className="max-w-7xl mx-auto px-5 sm:px-8">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-10 pb-12 border-b border-[#d8d0c2]">
           
           {/* BRAND COLUMN */}
           <div className="md:col-span-2 space-y-4">
-            <Link href="/" className="flex items-center gap-2.5 group">
-              <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-xs group-hover:bg-blue-700 transition-colors">
-                <Sparkles className="w-4 h-4 text-white" />
-              </div>
-              <span className="font-bold text-xl tracking-tight text-slate-900">Edurah</span>
-            </Link>
-            <p className="text-sm text-slate-600 leading-relaxed max-w-sm">
-              An authoritative, video-first learning platform built for deep mastery across computer science, software engineering, artificial intelligence, and mathematics.
+            <EdurahLogo size="md" theme="light" />
+            <p className="text-xs text-[#555048] leading-relaxed max-w-sm">
+              An authoritative multi-grade educational platform built for deep academic mastery from foundational primary grades through advanced high school curricula.
             </p>
-            <div className="flex items-center gap-3 pt-2">
-              <a href="#" className="p-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300 transition-colors shadow-xs">
-                <Globe className="w-4 h-4" />
-              </a>
-              <a href="#" className="p-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300 transition-colors shadow-xs">
-                <Share2 className="w-4 h-4" />
-              </a>
-              <a href="#" className="p-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300 transition-colors shadow-xs">
-                <Mail className="w-4 h-4" />
-              </a>
+            <div className="flex items-center gap-2 pt-2">
+              <span className="edurah-eyebrow">
+                <span /> Structured Learning
+              </span>
             </div>
           </div>
 
-          {/* EXPLORE */}
+          {/* PLATFORM CURRICULUM */}
           <div>
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Platform</h3>
-            <ul className="space-y-2.5 text-sm">
+            <h3 className="text-[11px] font-bold text-[#171819] uppercase tracking-wider mb-4">Curriculum</h3>
+            <ul className="space-y-2.5 text-xs">
               <li>
-                <Link href="/subjects" className="hover:text-blue-600 transition-colors">All Subjects</Link>
+                <Link href="/courses" className="hover:text-[#171819] transition-colors">Course Catalog</Link>
               </li>
               <li>
-                <Link href="/courses" className="hover:text-blue-600 transition-colors">Course Catalog</Link>
+                <Link href="/subjects" className="hover:text-[#171819] transition-colors">Subject Tracks</Link>
               </li>
               <li>
-                <Link href="/quizzes" className="hover:text-blue-600 transition-colors">Interactive Quizzes</Link>
+                <Link href="/about" className="hover:text-[#171819] transition-colors">Our Methodology</Link>
               </li>
               <li>
-                <Link href="/about" className="hover:text-blue-600 transition-colors">Our Methodology</Link>
-              </li>
-              <li>
-                <Link href="/contact" className="hover:text-blue-600 transition-colors">Contact Support</Link>
+                <Link href="/contact" className="hover:text-[#171819] transition-colors">Support & Contact</Link>
               </li>
             </ul>
           </div>
 
-          {/* FEATURED SUBJECTS */}
+          {/* PRIMARY DISCIPLINES */}
           <div>
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Top Subjects</h3>
-            <ul className="space-y-2.5 text-sm">
+            <h3 className="text-[11px] font-bold text-[#171819] uppercase tracking-wider mb-4">Disciplines</h3>
+            <ul className="space-y-2.5 text-xs">
               <li>
-                <Link href="/subjects/computer-science" className="hover:text-blue-600 transition-colors">Computer Science</Link>
+                <Link href="/subjects/mathematics" className="hover:text-[#171819] transition-colors">Mathematics & Logic</Link>
               </li>
               <li>
-                <Link href="/subjects/web-development" className="hover:text-blue-600 transition-colors">Web Development</Link>
+                <Link href="/subjects/computer-science" className="hover:text-[#171819] transition-colors">Computer Science</Link>
               </li>
               <li>
-                <Link href="/subjects/artificial-intelligence" className="hover:text-blue-600 transition-colors">Artificial Intelligence</Link>
+                <Link href="/subjects/artificial-intelligence" className="hover:text-[#171819] transition-colors">Artificial Intelligence</Link>
               </li>
               <li>
-                <Link href="/subjects/mathematics" className="hover:text-blue-600 transition-colors">Mathematics & Logic</Link>
+                <Link href="/subjects/web-development" className="hover:text-[#171819] transition-colors">Web Development</Link>
               </li>
             </ul>
           </div>
 
-          {/* ADMIN & RESOURCES */}
+          {/* ACCESS */}
           <div>
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Administration</h3>
-            <ul className="space-y-2.5 text-sm">
+            <h3 className="text-[11px] font-bold text-[#171819] uppercase tracking-wider mb-4">Portals</h3>
+            <ul className="space-y-2.5 text-xs">
               <li>
-                <Link href="/admin" className="flex items-center gap-1 text-amber-700 hover:text-amber-900 transition-colors font-medium">
-                  Admin Dashboard <ArrowUpRight className="w-3 h-3" />
-                </Link>
+                <Link href="/login" className="hover:text-[#171819] font-medium transition-colors">Student & Educator Sign In</Link>
               </li>
               <li>
-                <Link href="/admin/courses" className="hover:text-blue-600 transition-colors">Manage Curriculum</Link>
+                <Link href="/about" className="hover:text-[#171819] transition-colors">About Edurah</Link>
               </li>
               <li>
-                <Link href="/admin/quizzes" className="hover:text-blue-600 transition-colors">Quiz Editor</Link>
-              </li>
-              <li>
-                <Link href="/admin/media" className="hover:text-blue-600 transition-colors">Media Library</Link>
+                <Link href="/contact" className="hover:text-[#171819] transition-colors">Inquire About Enrollment</Link>
               </li>
             </ul>
           </div>
@@ -97,12 +87,10 @@ export default function Footer() {
         </div>
 
         {/* BOTTOM METADATA */}
-        <div className="pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+        <div className="pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-[11px] text-[#7f786e]">
           <p>© {new Date().getFullYear()} Edurah Learning Technologies Inc. All rights reserved.</p>
           <div className="flex items-center gap-6">
-            <a href="#" className="hover:text-slate-800 transition-colors">Privacy Policy</a>
-            <a href="#" className="hover:text-slate-800 transition-colors">Terms of Service</a>
-            <a href="#" className="hover:text-slate-800 transition-colors">Security</a>
+            <span>Authoritative Multi-Grade Educational Architecture</span>
           </div>
         </div>
 
@@ -110,4 +98,3 @@ export default function Footer() {
     </footer>
   );
 }
-

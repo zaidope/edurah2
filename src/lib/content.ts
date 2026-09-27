@@ -1,12 +1,9 @@
-import { Subject, Course, Lesson, Quiz, MediaItem } from '@/types';
+import { Subject, Course, Lesson, Chapter, Quiz, MediaItem, Grade, QuizQuestion, ClientQuiz, ClientQuizQuestion } from '@/types';
 import { INITIAL_SUBJECTS } from '@/content/subjects';
 import { INITIAL_COURSES } from '@/content/courses';
 import { INITIAL_QUIZZES } from '@/content/quizzes';
-
-const SUBJECTS_KEY = 'edurah_subjects_data';
-const COURSES_KEY = 'edurah_courses_data';
-const QUIZZES_KEY = 'edurah_quizzes_data';
-const MEDIA_KEY = 'edurah_media_data';
+import { GRADES, getGradeById as fetchGradeById } from '@/content/grades';
+import { supabase } from '@/lib/supabase/client';
 
 const INITIAL_MEDIA: MediaItem[] = [
   {
@@ -17,7 +14,7 @@ const INITIAL_MEDIA: MediaItem[] = [
     size: '1.4 MB',
     dimensions: '1920x1080',
     uploadedAt: '2026-08-10',
-    category: 'banners'
+    category: 'banners',
   },
   {
     id: 'med-2',
@@ -27,142 +24,180 @@ const INITIAL_MEDIA: MediaItem[] = [
     size: '2.1 MB',
     dimensions: '1920x1080',
     uploadedAt: '2026-08-14',
-    category: 'courses'
+    category: 'courses',
   },
-  {
-    id: 'med-3',
-    name: 'react_nextjs_architecture.jpg',
-    url: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=1200&q=80',
-    type: 'image',
-    size: '1.8 MB',
-    dimensions: '1920x1080',
-    uploadedAt: '2026-08-18',
-    category: 'courses'
-  }
 ];
 
 class ContentServiceClass {
-  private getStorageItem<T>(key: string, defaultValue: T): T {
-    if (typeof window === 'undefined') return defaultValue;
+  // In-memory runtime cache (seeded initially, synchronized from Postgres)
+  private coursesCache: Course[] = [...INITIAL_COURSES];
+  private quizzesCache: Quiz[] = [...INITIAL_QUIZZES];
+  private subjectsCache: Subject[] = [...INITIAL_SUBJECTS];
+  private mediaCache: MediaItem[] = [...INITIAL_MEDIA];
+  private isSynchronized = false;
+
+  constructor() {
+    // Attempt background sync if in browser
+    if (typeof window !== 'undefined') {
+      void this.syncWithServer();
+    }
+  }
+
+  /**
+   * Asynchronously fetches the latest published courses and quizzes from Postgres
+   */
+  async syncWithServer(): Promise<void> {
     try {
-      const item = localStorage.getItem(key);
-      return item ? JSON.parse(item) : defaultValue;
+      const res = await fetch('/api/courses');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data?.courses && Array.isArray(json.data.courses) && json.data.courses.length > 0) {
+          this.coursesCache = json.data.courses;
+        }
+      }
+
+      const qRes = await fetch('/api/quizzes');
+      if (qRes.ok) {
+        const qJson = await qRes.json();
+        if (qJson.data?.quizzes && Array.isArray(qJson.data.quizzes) && qJson.data.quizzes.length > 0) {
+          this.quizzesCache = qJson.data.quizzes;
+        }
+      }
+
+      this.isSynchronized = true;
     } catch {
-      return defaultValue;
+      // In offline or initial bootstrap, gracefully retain memory cache
     }
   }
 
-  private setStorageItem<T>(key: string, value: T): void {
-    if (typeof window === 'undefined') return;
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch (e) {
-      console.error('Error saving to localStorage:', e);
-    }
+  // ==========================================
+  // GRADES
+  // ==========================================
+  getGrades(): Grade[] {
+    return GRADES;
   }
 
+  getGradeById(id: string): Grade | undefined {
+    return fetchGradeById(id);
+  }
+
+  // ==========================================
   // SUBJECTS
+  // ==========================================
   getSubjects(): Subject[] {
-    return this.getStorageItem<Subject[]>(SUBJECTS_KEY, INITIAL_SUBJECTS);
+    return this.subjectsCache;
   }
 
   getSubjectBySlug(slug: string): Subject | undefined {
-    return this.getSubjects().find(s => s.slug === slug);
+    return this.subjectsCache.find((s) => s.slug === slug);
   }
 
   getSubjectById(id: string): Subject | undefined {
-    return this.getSubjects().find(s => s.id === id);
+    return this.subjectsCache.find((s) => s.id === id);
   }
 
   saveSubject(subject: Subject): void {
-    const subjects = this.getSubjects();
-    const index = subjects.findIndex(s => s.id === subject.id);
-    if (index >= 0) {
-      subjects[index] = subject;
+    const idx = this.subjectsCache.findIndex((s) => s.id === subject.id);
+    if (idx >= 0) {
+      this.subjectsCache[idx] = subject;
     } else {
-      subjects.push(subject);
+      this.subjectsCache.push(subject);
     }
-    this.setStorageItem(SUBJECTS_KEY, subjects);
   }
 
   deleteSubject(id: string): void {
-    const subjects = this.getSubjects().filter(s => s.id !== id);
-    this.setStorageItem(SUBJECTS_KEY, subjects);
+    this.subjectsCache = this.subjectsCache.filter((s) => s.id !== id);
   }
 
+  // ==========================================
   // COURSES
+  // ==========================================
   getCourses(): Course[] {
-    return this.getStorageItem<Course[]>(COURSES_KEY, INITIAL_COURSES);
+    return this.coursesCache;
+  }
+
+  getCoursesByGrade(gradeId: string): Course[] {
+    return this.coursesCache.filter((c) => c.gradeId === gradeId);
+  }
+
+  getCoursesForGrade(gradeId: string): Course[] {
+    return this.getCoursesByGrade(gradeId);
   }
 
   getCourseBySlug(slug: string): Course | undefined {
-    return this.getCourses().find(c => c.slug === slug);
+    return this.coursesCache.find((c) => c.slug === slug);
+  }
+
+  getCourseById(id: string): Course | undefined {
+    return this.coursesCache.find((c) => c.id === id);
   }
 
   getCoursesBySubject(subjectId: string): Course[] {
-    return this.getCourses().filter(c => c.subjectId === subjectId);
+    return this.coursesCache.filter((c) => c.subjectId === subjectId);
   }
 
-  saveCourse(course: Course): void {
-    const courses = this.getCourses();
-    const index = courses.findIndex(c => c.id === course.id);
+  /**
+   * Saves course to in-memory cache and asynchronously persists to PostgreSQL database
+   */
+  async saveCourse(course: Course): Promise<{ success: boolean; error?: string }> {
+    const index = this.coursesCache.findIndex((c) => c.id === course.id);
     if (index >= 0) {
-      courses[index] = course;
+      this.coursesCache[index] = course;
     } else {
-      courses.push(course);
+      this.coursesCache.push(course);
     }
-    this.setStorageItem(COURSES_KEY, courses);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        const res = await fetch('/api/courses', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify(course),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          return { success: false, error: json.error?.message || 'Database sync failed' };
+        }
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error saving course' };
+    }
   }
 
   deleteCourse(id: string): void {
-    const courses = this.getCourses().filter(c => c.id !== id);
-    this.setStorageItem(COURSES_KEY, courses);
+    this.coursesCache = this.coursesCache.filter((c) => c.id !== id);
   }
 
-  // LESSONS
-  getAllLessons(): { lesson: Lesson; course: Course }[] {
-    const courses = this.getCourses();
-    const result: { lesson: Lesson; course: Course }[] = [];
-    for (const course of courses) {
-      for (const chapter of course.chapters) {
-        for (const lesson of chapter.lessons) {
-          result.push({ lesson, course });
-        }
-      }
+  // ==========================================
+  // CHAPTERS & LESSONS
+  // ==========================================
+  saveChapter(courseId: string, chapter: Chapter): void {
+    const course = this.getCourseById(courseId);
+    if (!course) return;
+
+    if (!course.chapters) course.chapters = [];
+    const idx = course.chapters.findIndex((ch) => ch.id === chapter.id);
+    if (idx >= 0) {
+      course.chapters[idx] = chapter;
+    } else {
+      course.chapters.push(chapter);
     }
-    return result;
-  }
-
-  getLessonBySlug(courseSlug: string, lessonSlug: string): { lesson: Lesson; course: Course; nextLesson?: Lesson; prevLesson?: Lesson } | undefined {
-    const course = this.getCourseBySlug(courseSlug);
-    if (!course) return undefined;
-
-    const allLessonsInCourse: Lesson[] = [];
-    for (const chapter of course.chapters) {
-      allLessonsInCourse.push(...chapter.lessons);
-    }
-    allLessonsInCourse.sort((a, b) => a.order - b.order);
-
-    const index = allLessonsInCourse.findIndex(l => l.slug === lessonSlug);
-    if (index === -1) return undefined;
-
-    return {
-      lesson: allLessonsInCourse[index],
-      course,
-      nextLesson: allLessonsInCourse[index + 1],
-      prevLesson: allLessonsInCourse[index - 1]
-    };
+    void this.saveCourse(course);
   }
 
   saveLesson(courseId: string, updatedLesson: Lesson): void {
-    const courses = this.getCourses();
-    const course = courses.find(c => c.id === courseId);
+    const course = this.getCourseById(courseId);
     if (!course) return;
 
     let found = false;
-    for (const chap of course.chapters) {
+    for (const chap of course.chapters || []) {
       if (chap.id === updatedLesson.chapterId) {
-        const lIndex = chap.lessons.findIndex(l => l.id === updatedLesson.id);
+        const lIndex = chap.lessons.findIndex((l) => l.id === updatedLesson.id);
         if (lIndex >= 0) {
           chap.lessons[lIndex] = updatedLesson;
         } else {
@@ -173,73 +208,179 @@ class ContentServiceClass {
       }
     }
 
-    if (!found && course.chapters.length > 0) {
+    if (!found && course.chapters && course.chapters.length > 0) {
       course.chapters[0].lessons.push(updatedLesson);
     }
 
-    this.saveCourse(course);
+    void this.saveCourse(course);
   }
 
-  // QUIZZES
+  getAllLessons(): { lesson: Lesson; course: Course }[] {
+    const result: { lesson: Lesson; course: Course }[] = [];
+    for (const course of this.coursesCache) {
+      for (const chapter of course.chapters || []) {
+        for (const lesson of chapter.lessons || []) {
+          result.push({ lesson, course });
+        }
+      }
+    }
+    return result;
+  }
+
+  getLessonBySlug(
+    courseSlug: string,
+    lessonSlug: string
+  ): { lesson: Lesson; course: Course; nextLesson?: Lesson; prevLesson?: Lesson } | undefined {
+    const course = this.getCourseBySlug(courseSlug);
+    if (!course) return undefined;
+
+    const allLessons: Lesson[] = [];
+    for (const chapter of course.chapters || []) {
+      allLessons.push(...chapter.lessons);
+    }
+    allLessons.sort((a, b) => a.order - b.order);
+
+    const index = allLessons.findIndex((l) => l.slug === lessonSlug);
+    if (index === -1) return undefined;
+
+    return {
+      lesson: allLessons[index],
+      course,
+      nextLesson: allLessons[index + 1],
+      prevLesson: allLessons[index - 1],
+    };
+  }
+
+  // ==========================================
+  // QUIZZES & SENSITIVE ANSWER STRIPPING
+  // ==========================================
   getQuizzes(): Quiz[] {
-    return this.getStorageItem<Quiz[]>(QUIZZES_KEY, INITIAL_QUIZZES);
+    return this.quizzesCache;
+  }
+
+  getQuizzesByGrade(gradeId: string): Quiz[] {
+    return this.quizzesCache.filter((q) => q.gradeId === gradeId);
   }
 
   getQuizById(id: string): Quiz | undefined {
-    return this.getQuizzes().find(q => q.id === id);
+    return this.quizzesCache.find((q) => q.id === id);
   }
 
-  saveQuiz(quiz: Quiz): void {
-    const quizzes = this.getQuizzes();
-    const index = quizzes.findIndex(q => q.id === quiz.id);
+  /**
+   * Returns quiz with answer keys and explanations strictly stripped for student security
+   */
+  getQuizForStudent(id: string): ClientQuiz | undefined {
+    const quiz = this.getQuizById(id);
+    if (!quiz) return undefined;
+
+    return {
+      id: quiz.id,
+      title: quiz.title,
+      description: quiz.description,
+      gradeId: quiz.gradeId,
+      courseId: quiz.courseId,
+      lessonId: quiz.lessonId,
+      subjectId: quiz.subjectId,
+      passingScore: quiz.passingScore,
+      totalMarks: quiz.totalMarks,
+      durationMinutes: quiz.durationMinutes,
+      startDate: quiz.startDate,
+      startTime: quiz.startTime,
+      deadlineDate: quiz.deadlineDate,
+      deadlineTime: quiz.deadlineTime,
+      questions: quiz.questions.map((q) => ({
+        id: q.id,
+        question: q.question,
+        options: q.options,
+        marks: q.marks,
+      })),
+    };
+  }
+
+  /**
+   * Returns full quiz with answers for faculty evaluation
+   */
+  getQuizForTeacher(id: string): Quiz | undefined {
+    return this.getQuizById(id);
+  }
+
+  /**
+   * Saves quiz to in-memory cache and asynchronously persists to PostgreSQL database
+   */
+  async saveQuiz(quiz: Quiz): Promise<{ success: boolean; error?: string }> {
+    const index = this.quizzesCache.findIndex((q) => q.id === quiz.id);
     if (index >= 0) {
-      quizzes[index] = quiz;
+      this.quizzesCache[index] = quiz;
     } else {
-      quizzes.push(quiz);
+      this.quizzesCache.push(quiz);
     }
-    this.setStorageItem(QUIZZES_KEY, quizzes);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        const res = await fetch('/api/quizzes', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify(quiz),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          return { success: false, error: json.error?.message || 'Quiz database sync failed' };
+        }
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error saving quiz' };
+    }
   }
 
   deleteQuiz(id: string): void {
-    const quizzes = this.getQuizzes().filter(q => q.id !== id);
-    this.setStorageItem(QUIZZES_KEY, quizzes);
+    this.quizzesCache = this.quizzesCache.filter((q) => q.id !== id);
   }
 
+  // ==========================================
   // MEDIA
+  // ==========================================
   getMediaItems(): MediaItem[] {
-    return this.getStorageItem<MediaItem[]>(MEDIA_KEY, INITIAL_MEDIA);
+    return this.mediaCache;
   }
 
   saveMediaItem(item: MediaItem): void {
-    const items = this.getMediaItems();
-    items.unshift(item);
-    this.setStorageItem(MEDIA_KEY, items);
+    this.mediaCache.unshift(item);
   }
 
   deleteMediaItem(id: string): void {
-    const items = this.getMediaItems().filter(m => m.id !== id);
-    this.setStorageItem(MEDIA_KEY, items);
+    this.mediaCache = this.mediaCache.filter((m) => m.id !== id);
   }
 
-  // GLOBAL SEARCH
+  // ==========================================
+  // SEARCH
+  // ==========================================
   search(query: string) {
     const q = query.toLowerCase().trim();
     if (!q) return { subjects: [], courses: [], lessons: [], quizzes: [] };
 
-    const subjects = this.getSubjects().filter(s =>
-      s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q)
+    const subjects = this.subjectsCache.filter(
+      (s) => s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q)
     );
 
-    const courses = this.getCourses().filter(c =>
-      c.title.toLowerCase().includes(q) || c.description.toLowerCase().includes(q) || c.subjectName.toLowerCase().includes(q)
+    const courses = this.coursesCache.filter(
+      (c) =>
+        c.title.toLowerCase().includes(q) ||
+        c.description.toLowerCase().includes(q) ||
+        c.subjectName.toLowerCase().includes(q)
     );
 
-    const lessons = this.getAllLessons().filter(({ lesson }) =>
-      lesson.title.toLowerCase().includes(q) || lesson.description.toLowerCase().includes(q)
+    const lessons = this.getAllLessons().filter(
+      ({ lesson }) =>
+        lesson.title.toLowerCase().includes(q) || lesson.description.toLowerCase().includes(q)
     );
 
-    const quizzes = this.getQuizzes().filter(qz =>
-      qz.title.toLowerCase().includes(q) || qz.description.toLowerCase().includes(q)
+    const quizzes = this.quizzesCache.filter(
+      (qz) => qz.title.toLowerCase().includes(q) || qz.description.toLowerCase().includes(q)
     );
 
     return { subjects, courses, lessons, quizzes };

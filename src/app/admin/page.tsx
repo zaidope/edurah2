@@ -6,50 +6,68 @@ import { ContentService } from '@/lib/content';
 import { AuthService } from '@/lib/auth';
 import { 
   Users, 
-  Layers, 
+  GraduationCap,
   BookOpen, 
-  Film, 
   Award, 
-  Activity, 
-  CheckCircle2, 
+  TrendingUp, 
   ArrowRight, 
-  ShieldCheck 
+  ShieldCheck,
+  FileQuestion,
+  Layers,
+  Sparkles
 } from 'lucide-react';
 
 export default function AdminDashboardPage() {
+  const grades = ContentService.getGrades();
   const [students, setStudents] = useState<any[]>([]);
-  const [subjects, setSubjects] = useState<any[]>([]);
+  const [teachers, setTeachers] = useState<any[]>([]);
   const [courses, setCourses] = useState<any[]>([]);
   const [quizzes, setQuizzes] = useState<any[]>([]);
 
   useEffect(() => {
-    setStudents(AuthService.getDemoStudents());
-    setSubjects(ContentService.getSubjects());
-    setCourses(ContentService.getCourses());
-    setQuizzes(ContentService.getQuizzes());
+    async function loadData() {
+      const studentData = await AuthService.getStudents();
+      const teacherData = await AuthService.getTeachers();
+      setStudents(studentData);
+      setTeachers(teacherData);
+      setCourses(ContentService.getCourses());
+      setQuizzes(ContentService.getQuizzes());
+    }
+    loadData();
   }, []);
 
   const activeStudentsCount = students.filter(s => s.isActive).length;
+  const activeTeachersCount = teachers.filter(t => t.isActive).length;
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
       
       {/* HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#d8d0c2] pb-6">
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
-            <ShieldCheck className="w-3.5 h-3.5 text-amber-600" /> Content & Student Management System
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#ede6d8] border border-[#d8d0c2] text-[#8e5a2b] text-[11px] font-bold uppercase tracking-wider">
+            <ShieldCheck className="w-3.5 h-3.5 text-[#8e5a2b]" /> Platform Administration & Governance
           </div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mt-2">Admin Dashboard</h1>
-          <p className="text-xs text-slate-600">Overview of 300+ student accounts, curriculum metrics, and system status.</p>
+          <h1 className="text-3xl sm:text-4xl font-serif-heading font-normal text-[#171819] tracking-tight mt-2">
+            Institutional Oversight
+          </h1>
+          <p className="text-xs sm:text-sm text-[#6f6b63] mt-1 leading-relaxed">
+            Central governance across multi-grade curricula, faculty assignments, cohort promotions, and assessments.
+          </p>
         </div>
 
         <div className="flex items-center gap-3">
           <Link
-            href="/admin/students"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium shadow-xs"
+            href="/admin/quiz-maker"
+            className="edurah-btn-primary text-xs px-4 py-2.5 inline-flex items-center gap-2"
           >
-            <Users className="w-4 h-4 text-white" /> Manage Students
+            <FileQuestion className="w-4 h-4" /> PDF Quiz Compiler
+          </Link>
+          <Link
+            href="/admin/students"
+            className="edurah-btn-secondary text-xs px-4 py-2.5 inline-flex items-center gap-2"
+          >
+            <Users className="w-4 h-4" /> Student Roster
           </Link>
         </div>
       </div>
@@ -57,121 +75,136 @@ export default function AdminDashboardPage() {
       {/* STATS METRIC CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { label: 'Enrolled Students', count: students.length, href: '/admin/students', icon: Users, color: 'text-blue-600' },
-          { label: 'Active Accounts', count: activeStudentsCount, href: '/admin/students', icon: CheckCircle2, color: 'text-emerald-600' },
-          { label: 'Total Courses', count: courses.length, href: '/admin/courses', icon: BookOpen, color: 'text-blue-600' },
-          { label: 'Active Quizzes', count: quizzes.length, href: '/admin/quizzes', icon: Award, color: 'text-amber-600' }
+          { label: 'Assigned Students', count: students.length, sub: `${activeStudentsCount} active accounts`, href: '/admin/students', icon: Users },
+          { label: 'Faculty Educators', count: teachers.length, sub: `${activeTeachersCount} cohort leaders`, href: '/admin/teachers', icon: GraduationCap },
+          { label: 'Curriculum Modules', count: courses.length, sub: `Active across Grades 1–10`, href: '/admin/courses', icon: BookOpen },
+          { label: 'Published Assessments', count: quizzes.length, sub: 'Interactive syllabus tests', href: '/admin/quizzes', icon: Award }
         ].map((stat, idx) => {
           const Icon = stat.icon;
           return (
             <Link
               key={idx}
               href={stat.href}
-              className="bg-white p-6 rounded-xl border border-slate-200 flex items-center justify-between group hover:border-slate-300 shadow-xs transition-colors"
+              className="edurah-card-warm p-6 rounded-2xl flex items-center justify-between group hover:border-[#d8a471] shadow-xs transition-all"
             >
               <div className="space-y-1">
-                <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">{stat.label}</span>
-                <div className="text-3xl font-extrabold text-slate-900 group-hover:text-blue-600 transition-colors">
+                <span className="text-[11px] font-bold text-[#8e5a2b] uppercase tracking-wider">{stat.label}</span>
+                <div className="text-3xl font-serif-heading font-normal text-[#171819] group-hover:text-[#8e5a2b] transition-colors">
                   {stat.count}
                 </div>
+                <p className="text-[11px] text-[#6f6b63]">{stat.sub}</p>
               </div>
-              <div className="w-12 h-12 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center">
-                <Icon className={`w-6 h-6 ${stat.color}`} />
+              <div className="w-12 h-12 rounded-xl bg-[#ede6d8] border border-[#d8d0c2] text-[#8e5a2b] flex items-center justify-center shrink-0 group-hover:bg-[#e4dcce] transition-colors">
+                <Icon className="w-6 h-6" />
               </div>
             </Link>
           );
         })}
       </div>
 
-      {/* QUICK ACTIONS & SYSTEM HEALTH */}
+      {/* WORKFLOW SHORTCUTS & GRADE WORLDS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* QUICK MANAGEMENT SHORTCUTS */}
+        {/* SHORTCUTS */}
         <div className="lg:col-span-2 space-y-4">
-          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <Activity className="w-5 h-5 text-blue-600" /> Quick Management Actions
+          <h2 className="text-lg font-serif-heading font-normal text-[#171819] flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-[#8e5a2b]" /> Governance Workflows
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Link
-              href="/admin/students"
-              className="p-5 rounded-xl bg-white border border-slate-200 hover:border-blue-300 shadow-xs space-y-2 group"
+              href="/admin/teachers"
+              className="edurah-card-warm p-5 rounded-2xl hover:border-[#d8a471] shadow-xs space-y-2 group transition-all"
             >
-              <div className="flex items-center justify-between text-blue-600">
+              <div className="flex items-center justify-between text-[#8e5a2b]">
+                <GraduationCap className="w-5 h-5" />
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </div>
+              <h3 className="font-serif-heading font-normal text-base text-[#171819]">Faculty Provisioning</h3>
+              <p className="text-xs text-[#6f6b63] leading-relaxed">
+                Assign educators to grade tiers, manage teaching credentials, and delegate curriculum ownership.
+              </p>
+            </Link>
+
+            <Link
+              href="/admin/students"
+              className="edurah-card-warm p-5 rounded-2xl hover:border-[#d8a471] shadow-xs space-y-2 group transition-all"
+            >
+              <div className="flex items-center justify-between text-[#8e5a2b]">
                 <Users className="w-5 h-5" />
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
-              <h3 className="font-bold text-slate-900 text-base">Provision Student Accounts</h3>
-              <p className="text-xs text-slate-600">Create login credentials, manage 300+ students, and view individual progress.</p>
+              <h3 className="font-serif-heading font-normal text-base text-[#171819]">Student Cohort Promotion</h3>
+              <p className="text-xs text-[#6f6b63] leading-relaxed">
+                Promote students to next grade level while preserving historical completion records and scores.
+              </p>
             </Link>
 
             <Link
-              href="/admin/subjects"
-              className="p-5 rounded-xl bg-white border border-slate-200 hover:border-blue-300 shadow-xs space-y-2 group"
+              href="/admin/quiz-maker"
+              className="edurah-card-warm p-5 rounded-2xl hover:border-[#d8a471] shadow-xs space-y-2 group transition-all"
             >
-              <div className="flex items-center justify-between text-blue-600">
-                <Layers className="w-5 h-5" />
+              <div className="flex items-center justify-between text-[#8e5a2b]">
+                <FileQuestion className="w-5 h-5" />
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
-              <h3 className="font-bold text-slate-900 text-base">Subject Track Manager</h3>
-              <p className="text-xs text-slate-600">Create, edit, or toggle featured status of learning domains.</p>
+              <h3 className="font-serif-heading font-normal text-base text-[#171819]">Assessment Compiler</h3>
+              <p className="text-xs text-[#6f6b63] leading-relaxed">
+                Upload question PDFs to automatically parse, edit, and publish interactive tests for any grade.
+              </p>
             </Link>
 
             <Link
-              href="/admin/lessons"
-              className="p-5 rounded-xl bg-white border border-slate-200 hover:border-emerald-300 shadow-xs space-y-2 group"
+              href="/admin/progress"
+              className="edurah-card-warm p-5 rounded-2xl hover:border-[#d8a471] shadow-xs space-y-2 group transition-all"
             >
-              <div className="flex items-center justify-between text-emerald-600">
-                <Film className="w-5 h-5" />
+              <div className="flex items-center justify-between text-[#8e5a2b]">
+                <TrendingUp className="w-5 h-5" />
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
-              <h3 className="font-bold text-slate-900 text-base">Lesson Video Editor</h3>
-              <p className="text-xs text-slate-600">Attach YouTube embed links, learning objectives, and resources.</p>
-            </Link>
-
-            <Link
-              href="/admin/quizzes"
-              className="p-5 rounded-xl bg-white border border-slate-200 hover:border-amber-300 shadow-xs space-y-2 group"
-            >
-              <div className="flex items-center justify-between text-amber-600">
-                <Award className="w-5 h-5" />
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </div>
-              <h3 className="font-bold text-slate-900 text-base">Quiz Builder Engine</h3>
-              <p className="text-xs text-slate-600">Construct question banks, option choices, and explanations.</p>
+              <h3 className="font-serif-heading font-normal text-base text-[#171819]">Curriculum Analytics Matrix</h3>
+              <p className="text-xs text-[#6f6b63] leading-relaxed">
+                Inspect cross-grade completion statistics, student mastery metrics, and quiz results.
+              </p>
             </Link>
           </div>
         </div>
 
-        {/* SYSTEM INTEGRITY STATUS */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200 space-y-6 shadow-xs">
-          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600" /> Security & DB Integrity
+        {/* GRADE WORLDS ARCHITECTURE */}
+        <div className="edurah-card-warm p-6 rounded-2xl shadow-xs space-y-4">
+          <h2 className="text-base font-serif-heading font-normal text-[#171819] flex items-center gap-2">
+            <Layers className="w-4 h-4 text-[#8e5a2b]" /> Pedagogical Tiers
           </h2>
 
-          <div className="space-y-4 text-xs text-slate-700">
-            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500 font-medium">Student Auth System</span>
-                <span className="text-emerald-700 font-bold">Supabase Auth</span>
+          <div className="space-y-3 text-xs">
+            <div className="p-3.5 rounded-xl bg-[#ede6d8]/60 border border-[#d8d0c2] space-y-1">
+              <div className="flex items-center justify-between font-bold text-[#171819]">
+                <span>Junior World (Grades 1–4)</span>
+                <span className="text-[10px] bg-[#d8a471]/30 text-[#8e5a2b] font-bold px-2 py-0.5 rounded-full">Exploratory</span>
               </div>
-              <p className="text-[11px] text-slate-500">Public self-registration disabled</p>
+              <p className="text-[11px] text-[#6f6b63] leading-relaxed">
+                Warm parchment palette, floating educational stars & clouds, rounded shapes, and playful pedagogical metaphors.
+              </p>
             </div>
 
-            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500 font-medium">Row Level Security</span>
-                <span className="text-emerald-700 font-bold">RLS Active (PostgreSQL)</span>
+            <div className="p-3.5 rounded-xl bg-[#ede6d8]/60 border border-[#d8d0c2] space-y-1">
+              <div className="flex items-center justify-between font-bold text-[#171819]">
+                <span>Middle World (Grades 5–8)</span>
+                <span className="text-[10px] bg-[#d8a471]/30 text-[#8e5a2b] font-bold px-2 py-0.5 rounded-full">Analytical</span>
               </div>
-              <p className="text-[11px] text-slate-500">Strict student data isolation</p>
+              <p className="text-[11px] text-[#6f6b63] leading-relaxed">
+                Structured coordinate grids, planetary orbits, transitional typography, and rigorous STEM diagrams.
+              </p>
             </div>
 
-            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500 font-medium">Progress Tracker</span>
-                <span className="text-emerald-700 font-bold">Server-Side Sync</span>
+            <div className="p-3.5 rounded-xl bg-[#ede6d8]/60 border border-[#d8d0c2] space-y-1">
+              <div className="flex items-center justify-between font-bold text-[#171819]">
+                <span>Senior World (Grades 8–10)</span>
+                <span className="text-[10px] bg-[#0b0d0e] text-[#f6f2e9] font-bold px-2 py-0.5 rounded-full">Academic</span>
               </div>
-              <p className="text-[11px] text-slate-500">Cross-device lesson & quiz persistence</p>
+              <p className="text-[11px] text-[#6f6b63] leading-relaxed">
+                Obsidian dark theme, sine wave harmonics, restrained editorial typography, and university preparation focus.
+              </p>
             </div>
           </div>
         </div>
@@ -181,4 +214,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-

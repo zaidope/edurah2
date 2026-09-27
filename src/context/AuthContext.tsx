@@ -1,15 +1,14 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { UserProfile } from '@/types';
 import { supabase } from '@/lib/supabase/client';
-import { AuthService } from '@/lib/auth';
 
 interface AuthContextType {
-  user: any | null;
+  user: { id: string; email?: string } | null;
   profile: UserProfile | null;
   loading: boolean;
-  login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; role?: string }>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -23,211 +22,126 @@ const AuthContext = createContext<AuthContextType>({
   refreshProfile: async () => {},
 });
 
-export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<any | null>(null);
+function toProfile(record: Record<string, unknown>, userMeta?: Record<string, unknown>): UserProfile {
+  const resolvedGradeId =
+    typeof record.grade_id === 'string' && record.grade_id
+      ? record.grade_id
+      : typeof userMeta?.grade_id === 'string' && userMeta.grade_id.startsWith('grade-')
+      ? userMeta.grade_id
+      : record.role === 'student'
+      ? 'grade-1'
+      : undefined;
+
+  return {
+    id: String(record.id),
+    fullName: String(record.full_name || userMeta?.full_name || ''),
+    email: String(record.email || ''),
+    studentId: String(record.student_id || userMeta?.student_id || ''),
+    role: (record.role || userMeta?.role) as UserProfile['role'],
+    gradeId: resolvedGradeId,
+    classGroup: typeof record.class_group === 'string' ? record.class_group : undefined,
+    academicBatch: typeof record.academic_batch === 'string' ? record.academic_batch : (typeof userMeta?.academic_batch === 'string' ? userMeta.academic_batch : '2025–2026'),
+    isActive: Boolean(record.is_active ?? true),
+    createdAt: String(record.created_at || ''),
+    updatedAt: String(record.updated_at || ''),
+  };
+}
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<AuthContextType['user']>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Helper to fetch profile from Supabase profiles table
-  const fetchProfileFromSupabase = async (userId: string, email: string): Promise<UserProfile | null> => {
-    try {
-      const { data: prof, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (!error && prof) {
-        return {
-          id: prof.id,
-          fullName: prof.full_name,
-          email: prof.email,
-          studentId: prof.student_id || 'N/A',
-          role: prof.role as 'admin' | 'student',
-          classGroup: prof.class_group || 'General Batch',
-          isActive: prof.is_active,
-          createdAt: prof.created_at ? new Date(prof.created_at).toISOString().split('T')[0] : '',
-          updatedAt: prof.updated_at ? new Date(prof.updated_at).toISOString().split('T')[0] : '',
+  const loadProfile = useCallback(async (userId: string, userMeta?: Record<string, unknown>) => {
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+    if (error || !data) {
+      // If profile row doesn't exist yet, construct from user metadata if available
+      if (userMeta) {
+        const fallbackProfile: UserProfile = {
+          id: userId,
+          fullName: String(userMeta.full_name || ''),
+          email: '',
+          studentId: String(userMeta.student_id || ''),
+          role: (userMeta.role as UserProfile['role']) || 'student',
+          gradeId: typeof userMeta.grade_id === 'string' ? userMeta.grade_id : 'grade-1',
+          isActive: true,
+          createdAt: '',
+          updatedAt: '',
         };
+        setProfile(fallbackProfile);
+        return fallbackProfile;
       }
-    } catch (e) {
-      console.warn('Could not fetch Supabase profile record:', e);
+      setProfile(null);
+      return null;
     }
-    return null;
-  };
+    const nextProfile = toProfile(data, userMeta);
+    setProfile(nextProfile.isActive ? nextProfile : null);
 
-  const syncUserSession = async (sessionUser: any) => {
+    // Auto-heal grade_id in profiles table if null but available in metadata
+    if (userMeta?.grade_id && typeof userMeta.grade_id === 'string' && !data.grade_id) {
+      void supabase.from('profiles').update({ grade_id: userMeta.grade_id }).eq('id', userId);
+    }
+
+    return nextProfile;
+  }, []);
+
+  const syncSession = useCallback(async (sessionUser: any | null) => {
     if (!sessionUser) {
       setUser(null);
       setProfile(null);
-      localStorage.removeItem('edurah_current_active_user');
       setLoading(false);
       return;
     }
-
     setUser(sessionUser);
-
-    // Fetch real profile from Supabase
-    const liveProfile = await fetchProfileFromSupabase(sessionUser.id, sessionUser.email || '');
-
-    if (liveProfile) {
-      setProfile(liveProfile);
-      localStorage.setItem('edurah_current_active_user', JSON.stringify(liveProfile));
-    } else {
-      // If user exists in Auth but profile row is pending, construct temporary profile from metadata
-      const meta = sessionUser.user_metadata || {};
-      const fallbackProf: UserProfile = {
-        id: sessionUser.id,
-        fullName: meta.full_name || sessionUser.email?.split('@')[0] || 'Authenticated User',
-        email: sessionUser.email || '',
-        studentId: meta.student_id || 'EDU-2026-LIVE',
-        role: (meta.role === 'admin' ? 'admin' : 'student'),
-        classGroup: meta.class_group || 'Active Student',
-        isActive: true,
-        createdAt: new Date().toISOString().split('T')[0],
-        updatedAt: new Date().toISOString().split('T')[0],
-      };
-      setProfile(fallbackProf);
-      localStorage.setItem('edurah_current_active_user', JSON.stringify(fallbackProf));
-    }
-
+    await loadProfile(sessionUser.id, sessionUser.user_metadata);
     setLoading(false);
-  };
+  }, [loadProfile]);
 
   useEffect(() => {
-    let mounted = true;
-
-    const initializeAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (mounted) {
-          if (session?.user) {
-            await syncUserSession(session.user);
-          } else {
-            // Check local fallback cached user if no Supabase session exists
-            const savedUser = localStorage.getItem('edurah_current_active_user');
-            if (savedUser) {
-              try {
-                const p = JSON.parse(savedUser);
-                setProfile(p);
-                setUser({ id: p.id, email: p.email });
-              } catch (e) {}
-            }
-            setLoading(false);
-          }
-        }
-      } catch (e) {
-        if (mounted) setLoading(false);
-      }
-    };
-
-    initializeAuth();
-
-    // Subscribe to Auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (mounted) {
-        if (session?.user) {
-          await syncUserSession(session.user);
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null);
-          setProfile(null);
-          localStorage.removeItem('edurah_current_active_user');
-          setLoading(false);
-        }
-      }
+    let active = true;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (active) void syncSession(data.session?.user ?? null);
+    }).catch(() => {
+      if (active) setLoading(false);
     });
-
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (active) void syncSession(session?.user ?? null);
+    });
     return () => {
-      mounted = false;
-      subscription?.unsubscribe();
+      active = false;
+      subscription.unsubscribe();
     };
-  }, []);
+  }, [syncSession]);
 
-  const login = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (email: string, password: string) => {
     setLoading(true);
-
-    // 1. Authenticate against Supabase Auth
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: pass,
-      });
-
-      if (error) {
-        setLoading(false);
-        return { success: false, error: error.message };
-      }
-
-      if (data?.user) {
-        const liveProfile = await fetchProfileFromSupabase(data.user.id, data.user.email || email);
-
-        if (liveProfile) {
-          if (!liveProfile.isActive) {
-            await supabase.auth.signOut();
-            setLoading(false);
-            return { success: false, error: 'Your account has been deactivated. Please contact your administrator.' };
-          }
-          setUser(data.user);
-          setProfile(liveProfile);
-          localStorage.setItem('edurah_current_active_user', JSON.stringify(liveProfile));
-          setLoading(false);
-          return { success: true };
-        } else {
-          // If Auth user exists but profile row is missing, construct from user metadata
-          const meta = data.user.user_metadata || {};
-          const newProf: UserProfile = {
-            id: data.user.id,
-            fullName: meta.full_name || data.user.email?.split('@')[0] || 'Authenticated User',
-            email: data.user.email || email,
-            studentId: meta.student_id || 'EDU-2026-LIVE',
-            role: (meta.role === 'admin' ? 'admin' : 'student'),
-            classGroup: meta.class_group || 'Active Student',
-            isActive: true,
-            createdAt: new Date().toISOString().split('T')[0],
-            updatedAt: new Date().toISOString().split('T')[0],
-          };
-          setUser(data.user);
-          setProfile(newProf);
-          localStorage.setItem('edurah_current_active_user', JSON.stringify(newProf));
-          setLoading(false);
-          return { success: true };
-        }
-      }
-    } catch (e: any) {
+    const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (error || !data.user) {
       setLoading(false);
-      return { success: false, error: e.message || 'Authentication error' };
+      return { success: false, error: 'We couldn’t sign you in with those details. Please check your email and password.' };
     }
-
+    const nextProfile = await loadProfile(data.user.id, data.user.user_metadata);
+    setUser(data.user);
     setLoading(false);
-    return { success: false, error: 'Invalid email or password credentials.' };
+    if (!nextProfile) {
+      await supabase.auth.signOut();
+      setUser(null);
+      return { success: false, error: 'Your account is not ready to use yet. Please contact your school administrator.' };
+    }
+    return { success: true, role: nextProfile.role };
   };
 
   const logout = async () => {
-    setLoading(true);
-    try {
-      await supabase.auth.signOut();
-    } catch (e) {}
+    await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
-    localStorage.removeItem('edurah_current_active_user');
-    setLoading(false);
   };
 
   const refreshProfile = async () => {
-    if (user?.id) {
-      const p = await fetchProfileFromSupabase(user.id, user.email || '');
-      if (p) {
-        setProfile(p);
-        localStorage.setItem('edurah_current_active_user', JSON.stringify(p));
-      }
-    }
+    if (user) await loadProfile(user.id);
   };
 
-  return (
-    <AuthContext.Provider value={{ user, profile, loading, login, logout, refreshProfile }}>
-      {children}
-    </AuthContext.Provider>
-  );
-};
+  return <AuthContext.Provider value={{ user, profile, loading, login, logout, refreshProfile }}>{children}</AuthContext.Provider>;
+}
 
 export const useAuth = () => useContext(AuthContext);
