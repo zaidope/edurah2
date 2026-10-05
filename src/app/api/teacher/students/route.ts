@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
     let supabaseAdmin;
     try {
       supabaseAdmin = getSupabaseAdmin();
-    } catch (err: any) {
+    } catch {
       return NextResponse.json(
         { data: null, error: { code: 'UNAVAILABLE', message: 'Database service role client unavailable' }, success: false },
         { status: 503 }
@@ -33,13 +33,20 @@ export async function GET(req: NextRequest) {
     }
 
     // Verify caller profile
-    const { data: callerProfile } = await supabaseAdmin
+    const { data: callerProfile, error: callerProfileError } = await supabaseAdmin
       .from('profiles')
       .select('id, role, grade_id, is_active')
       .eq('id', callerUser.id)
       .maybeSingle();
 
-    const role = callerProfile?.role || callerUser.user_metadata?.role;
+    if (callerProfileError || !callerProfile || !callerProfile.is_active) {
+      return NextResponse.json(
+        { data: null, error: { code: 'FORBIDDEN', message: 'An active database profile is required.' }, success: false },
+        { status: 403 }
+      );
+    }
+
+    const role = callerProfile.role;
     if (role !== 'teacher' && role !== 'admin') {
       return NextResponse.json(
         { data: null, error: { code: 'FORBIDDEN', message: 'Only teachers and administrators can view cohort student rosters.' }, success: false },
@@ -54,17 +61,23 @@ export async function GET(req: NextRequest) {
     const offset = (page - 1) * limit;
 
     // Scope target grade: Teachers can ONLY see their assigned grade
-    const teacherGrade = callerProfile?.grade_id || callerUser.user_metadata?.grade_id;
-    const targetGrade = role === 'admin' ? (queryGrade || 'grade-1') : (teacherGrade || 'grade-1');
+    const targetGrade = role === 'teacher' ? callerProfile.grade_id : queryGrade;
+    if (role === 'teacher' && !targetGrade) {
+      return NextResponse.json(
+        { data: null, error: { code: 'GRADE_UNASSIGNED', message: 'Teacher account has no assigned grade.' }, success: false },
+        { status: 409 }
+      );
+    }
 
     // Query profiles directly by indexed columns (role, grade_id) with range pagination
-    const { data: students, count, error: studentFetchError } = await supabaseAdmin
+    let studentQuery = supabaseAdmin
       .from('profiles')
       .select('*', { count: 'exact' })
       .eq('role', 'student')
-      .eq('grade_id', targetGrade)
       .order('full_name')
       .range(offset, offset + limit - 1);
+    if (targetGrade) studentQuery = studentQuery.eq('grade_id', targetGrade);
+    const { data: students, count, error: studentFetchError } = await studentQuery;
 
     if (studentFetchError) {
       return NextResponse.json(
@@ -87,9 +100,9 @@ export async function GET(req: NextRequest) {
       gradeId: targetGrade,
       students: students || [],
     });
-  } catch (err: any) {
+  } catch (error: unknown) {
     return NextResponse.json(
-      { data: null, error: { code: 'INTERNAL_ERROR', message: err.message || 'Internal server error' }, success: false },
+      { data: null, error: { code: 'INTERNAL_ERROR', message: error instanceof Error ? error.message : 'Internal server error' }, success: false },
       { status: 500 }
     );
   }

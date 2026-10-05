@@ -1,18 +1,39 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { ContentService } from '@/lib/content';
-import { Award, Plus, FileQuestion, HelpCircle, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Quiz } from '@/types';
+import { Award, FileQuestion, HelpCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 
 export default function TeacherQuizzesPage() {
   const { profile } = useAuth();
-  const teacherGradeId = profile?.gradeId || 'grade-1';
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const teacherGradeId = profile?.gradeId || '';
   const gradeObj = ContentService.getGradeById(teacherGradeId);
 
-  // Strictly restricted to teacher's assigned grade
-  const quizzes = ContentService.getQuizzesByGrade(teacherGradeId);
+  useEffect(() => {
+    let active = true;
+    void Promise.resolve().then(async () => {
+      if (!teacherGradeId) {
+        if (active) setLoadError('Your account has no assigned grade. Contact an administrator.');
+        if (active) setLoading(false);
+        return;
+      }
+      try {
+        const loadedQuizzes = await ContentService.loadQuizzes(teacherGradeId, undefined, 'published');
+        if (active) setQuizzes(loadedQuizzes);
+      } catch (error: unknown) {
+        if (active) setLoadError(error instanceof Error ? error.message : 'Could not load cohort quizzes.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    });
+    return () => { active = false; };
+  }, [teacherGradeId]);
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -37,6 +58,9 @@ export default function TeacherQuizzesPage() {
           <FileQuestion className="w-4 h-4" /> Compile Quiz from PDF
         </Link>
       </div>
+
+      {loadError && <div role="alert" className="border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900">{loadError}</div>}
+      {loading && <p className="text-xs text-[#706b63]">Loading cohort assessments…</p>}
 
       {quizzes.length === 0 ? (
         <div className="edurah-card-warm p-12 text-center rounded-2xl border border-[#d8d0c2] space-y-4">

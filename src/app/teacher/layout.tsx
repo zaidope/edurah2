@@ -148,6 +148,12 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
 
         {/* TEACHER USER FOOTER */}
         <div className="p-5 border-t border-[#e8e2d5] space-y-3 bg-[#f6f2e9]">
+          <Link
+            href="/prototypes"
+            className="block border border-[#d8d0c2] px-3 py-2 text-xs font-semibold text-[#555048] hover:bg-[#ede8dc]"
+          >
+            Explore portal prototypes
+          </Link>
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-[#171819] text-[#f6f2e9] flex items-center justify-center font-bold text-xs font-mono-code border border-[#d8d0c2]">
               {profile.fullName.charAt(0)}

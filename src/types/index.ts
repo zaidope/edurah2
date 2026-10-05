@@ -408,10 +408,11 @@ export interface AtRiskStudent {
   gradeId?: string;
   courseId?: string;
   courseTitle?: string;
-  reasons: ('no_activity_7_days' | 'failing_weighted_average' | 'two_or_more_missing_assignments')[];
+  reasons: ('no_activity_7_days' | 'low_quiz_average')[];
   reasonDetails: string[];
   lastActiveAt?: string;
   weightedAverage?: number;
+  averageQuizScore?: number;
   letterGrade?: string;
   missingCount: number;
   riskLevel: 'high' | 'medium';

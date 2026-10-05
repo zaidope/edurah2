@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { AuthService } from '@/lib/auth';
 import { UserProfile } from '@/types';
@@ -11,7 +11,6 @@ import { ShieldAlert } from 'lucide-react';
 
 export default function TeacherStudentDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const studentId = params?.id as string;
   const { profile, loading: authLoading } = useAuth();
 
@@ -52,7 +51,7 @@ export default function TeacherStudentDetailPage() {
   }
 
   // Teacher grade isolation check
-  const teacherGradeId = profile?.gradeId || 'grade-1';
+  const teacherGradeId = profile?.gradeId;
   if (profile?.role === 'teacher' && student.gradeId !== teacherGradeId) {
     return (
       <div className="edurah-card-warm max-w-xl mx-auto p-8 rounded-2xl border border-[#d8d0c2] text-center space-y-4 mt-8">

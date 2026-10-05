@@ -1,30 +1,21 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { UserProfile, Course, Grade, QuizResult, LessonProgressRecord, QuestionResultItem } from '@/types';
+import { UserProfile, Course, QuizResult, LessonProgressRecord } from '@/types';
 import { ContentService } from '@/lib/content';
 import { AuthService } from '@/lib/auth';
 import { supabase } from '@/lib/supabase/client';
 import {
-  User,
-  GraduationCap,
-  Calendar,
   Clock,
   BookOpen,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
   Award,
   ChevronDown,
   ChevronUp,
   RotateCcw,
   Eye,
   Shield,
-  Layers,
-  Sparkles,
   ArrowLeft,
-  Filter
 } from 'lucide-react';
 
 interface StudentDetailViewProps {
@@ -41,16 +32,17 @@ export default function StudentDetailView({
   onStudentUpdated,
 }: StudentDetailViewProps) {
   const grades = ContentService.getGrades();
-  const studentGradeId = student.gradeId || 'grade-1';
+  const studentGradeId = student.gradeId || '';
   const gradeObj = grades.find((g) => g.id === studentGradeId);
 
-  const courses = ContentService.getCoursesByGrade(studentGradeId);
-
   // Dynamic progress & results state
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [coursesLoading, setCoursesLoading] = useState(true);
+  const [coursesError, setCoursesError] = useState('');
   const [completedLessonIds, setCompletedLessonIds] = useState<string[]>([]);
   const [lessonRecords, setLessonRecords] = useState<Record<string, LessonProgressRecord>>({});
   const [quizResults, setQuizResults] = useState<Record<string, QuizResult>>({});
-  const [expandedCourseId, setExpandedCourseId] = useState<string | null>(courses[0]?.id || null);
+  const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
   const [selectedReviewQuiz, setSelectedReviewQuiz] = useState<QuizResult | null>(null);
   const [loadingProgress, setLoadingProgress] = useState(true);
 
@@ -60,9 +52,34 @@ export default function StudentDetailView({
   // Admin edit batch/grade modal state
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editGradeId, setEditGradeId] = useState(studentGradeId);
-  const [editBatch, setEditBatch] = useState(student.academicBatch || '2025–2026');
+  const [editBatch, setEditBatch] = useState(student.academicBatch || '');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editMessage, setEditMessage] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    void Promise.resolve().then(async () => {
+      if (!studentGradeId) {
+        setCourses([]);
+        setCoursesError('This student has no assigned grade.');
+        setCoursesLoading(false);
+        return;
+      }
+      setCoursesLoading(true);
+      setCoursesError('');
+      try {
+        const loadedCourses = await ContentService.loadCourses(studentGradeId, 'all');
+        if (!active) return;
+        setCourses(loadedCourses);
+        setExpandedCourseId((current) => current && loadedCourses.some((course) => course.id === current) ? current : loadedCourses[0]?.id || null);
+      } catch (error: unknown) {
+        if (active) setCoursesError(error instanceof Error ? error.message : 'Could not load student course records.');
+      } finally {
+        if (active) setCoursesLoading(false);
+      }
+    });
+    return () => { active = false; };
+  }, [studentGradeId]);
 
   const formatSeconds = (sec: number) => {
     if (!sec || sec <= 0) return '00:00';
@@ -79,7 +96,7 @@ export default function StudentDetailView({
   };
 
   // Load student progress and assessment results
-  const loadStudentData = async () => {
+  const loadStudentData = useCallback(async () => {
     setLoadingProgress(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -97,8 +114,8 @@ export default function StudentDetailView({
             if (json.quizResultsMap) {
               setQuizResults(json.quizResultsMap);
             } else if (Array.isArray(json.quizResults)) {
-              const map: Record<string, any> = {};
-              json.quizResults.forEach((qr: any) => { map[qr.quizId] = qr; });
+              const map: Record<string, QuizResult> = {};
+              json.quizResults.forEach((result: QuizResult) => { map[result.quizId] = result; });
               setQuizResults(map);
             } else {
               setQuizResults(json.quizResults || {});
@@ -111,11 +128,11 @@ export default function StudentDetailView({
     } finally {
       setLoadingProgress(false);
     }
-  };
+  }, [student.id]);
 
   useEffect(() => {
-    void loadStudentData();
-  }, [student.id]);
+    void Promise.resolve().then(loadStudentData);
+  }, [loadStudentData]);
 
   // Handle Authorizing Retake
   const handleAllowRetake = async (quizId: string) => {
@@ -164,7 +181,7 @@ export default function StudentDetailView({
       if (editGradeId !== student.gradeId) {
         await AuthService.updateStudentGrade(student.id, editGradeId);
       }
-      if (editBatch !== (student.academicBatch || '2025–2026')) {
+      if (editBatch !== (student.academicBatch || '')) {
         await AuthService.updateStudentBatch(student.id, editBatch);
       }
 
@@ -282,7 +299,7 @@ export default function StudentDetailView({
             </div>
             <div className="px-3.5 py-2 bg-[#faf8f5] border border-[#d8d0c2] rounded-xl text-xs">
               <span className="text-[10px] uppercase tracking-wider text-[#6f6b63] font-bold block">Academic Batch</span>
-              <span className="font-semibold text-[#8e5a2b] font-mono-code">{student.academicBatch || '2025–2026'}</span>
+              <span className="font-semibold text-[#8e5a2b] font-mono-code">{student.academicBatch || 'Unassigned'}</span>
             </div>
             <div className="px-3.5 py-2 bg-[#faf8f5] border border-[#d8d0c2] rounded-xl text-xs">
               <span className="text-[10px] uppercase tracking-wider text-[#6f6b63] font-bold block">Last Active</span>
@@ -296,6 +313,7 @@ export default function StudentDetailView({
           <h2 className="font-serif-heading text-lg font-normal text-[#171819] mb-4 flex items-center gap-2">
             <Award className="w-4 h-4 text-[#8e5a2b]" /> Overall Academic Progress Summary
           </h2>
+          {loadingProgress && <p className="mb-3 text-xs text-[#6f6b63]">Loading verified student progress…</p>}
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <div className="bg-[#faf8f5] p-4 rounded-xl border border-[#d8d0c2] text-center space-y-1">
@@ -356,7 +374,10 @@ export default function StudentDetailView({
           </span>
         </div>
 
-        {courses.length === 0 ? (
+        {coursesError && <div role="alert" className="border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900">{coursesError}</div>}
+        {coursesLoading ? (
+          <p className="text-xs text-[#6f6b63]">Loading production course progress…</p>
+        ) : courses.length === 0 ? (
           <div className="edurah-card-warm p-8 text-center rounded-2xl border border-[#d8d0c2] text-xs text-[#6f6b63]">
             No courses enrolled for this grade.
           </div>
@@ -658,7 +679,7 @@ export default function StudentDetailView({
 
                     <div className="text-xs space-y-1 pt-1 border-t border-black/5 font-sans">
                       <div className="flex items-center gap-2">
-                        <span className="text-[#6f6b63] font-bold w-28">Student's Answer:</span>
+                        <span className="text-[#6f6b63] font-bold w-28">Student&apos;s Answer:</span>
                         <span className={item.isCorrect ? 'text-emerald-900 font-semibold' : 'text-rose-900 font-semibold'}>
                           {item.studentAnswerText}
                         </span>

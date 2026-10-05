@@ -12,6 +12,7 @@ const publicNavLinks = [
   { name: 'Home', href: '/' },
   { name: 'Courses', href: '/courses' },
   { name: 'Subjects', href: '/subjects' },
+  { name: 'Portals', href: '/prototypes' },
   { name: 'About', href: '/about' },
   { name: 'Contact', href: '/contact' },
 ];
@@ -36,6 +37,7 @@ export default function Header() {
         { name: 'My Courses', href: '/courses' },
         { name: 'Subjects', href: '/subjects' },
         { name: 'Progress', href: '/my-learning' },
+        { name: 'Portals', href: '/prototypes' },
         { name: 'Profile', href: '/profile' },
       ];
     } else if (profile.role === 'teacher') {
@@ -43,12 +45,14 @@ export default function Header() {
         { name: 'Faculty Hub', href: '/teacher' },
         { name: 'Course Catalog', href: '/courses' },
         { name: 'Subjects', href: '/subjects' },
+        { name: 'Portals', href: '/prototypes' },
       ];
     } else if (profile.role === 'admin') {
       links = [
         { name: 'Admin Console', href: '/admin' },
         { name: 'Course Catalog', href: '/courses' },
         { name: 'Subjects', href: '/subjects' },
+        { name: 'Portals', href: '/prototypes' },
       ];
     }
   }

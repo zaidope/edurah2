@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { ContentService } from '@/lib/content';
@@ -9,21 +9,23 @@ import {
   FileText,
   Plus,
   Calendar,
-  Clock,
-  CheckCircle2,
-  Users,
   Sparkles,
   ArrowRight,
   FolderCheck,
-  RotateCcw,
   X,
-  AlertCircle
+  AlertCircle,
+  Target
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+
+type RahStudent = { id: string; full_name: string };
+type RahAssignment = { id: string; title: string; student_id: string; created_at: string };
 
 export default function TeacherAssignmentsPage() {
   const { profile } = useAuth();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [gradeCourses, setGradeCourses] = useState<Course[]>([]);
+  const [courseLoadError, setCourseLoadError] = useState('');
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
@@ -33,7 +35,7 @@ export default function TeacherAssignmentsPage() {
   const [instructionsMd, setInstructionsMd] = useState('');
   const [dueAt, setDueAt] = useState('');
   const [closeAt, setCloseAt] = useState('');
-  const [points, setPoints] = useState(100);
+  const points = 100;
   const [latePenalty, setLatePenalty] = useState(5);
   const [criteria, setCriteria] = useState<Array<{ title: string; description: string; maxPoints: number }>>([
     { title: 'Core Requirements & Execution', description: 'Meets primary prompt objectives.', maxPoints: 50 },
@@ -41,12 +43,18 @@ export default function TeacherAssignmentsPage() {
   ]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [rahStudents, setRahStudents] = useState<RahStudent[]>([]);
+  const [rahStudentId, setRahStudentId] = useState('');
+  const [rahSkill, setRahSkill] = useState('sentence_structure');
+  const [rahAssignments, setRahAssignments] = useState<RahAssignment[]>([]);
+  const [rahBusy, setRahBusy] = useState(false);
+  const [rahError, setRahError] = useState('');
+  const [rahMessage, setRahMessage] = useState('');
 
   const teacherGradeId = profile?.gradeId;
   const gradeObj = teacherGradeId ? ContentService.getGradeById(teacherGradeId) : null;
-  const gradeCourses = teacherGradeId ? ContentService.getCoursesByGrade(teacherGradeId) : ContentService.getCourses();
 
-  const loadAssignments = async () => {
+  const loadAssignments = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/assignments');
@@ -61,14 +69,78 @@ export default function TeacherAssignmentsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const loadRahAssignments = useCallback(async () => {
+    if (!teacherGradeId) return;
+    const { data: roster, error: rosterError } = await supabase.from('profiles')
+      .select('id,full_name')
+      .eq('role', 'student')
+      .eq('grade_id', teacherGradeId)
+      .eq('is_active', true)
+      .order('full_name');
+    if (rosterError) {
+      setRahError('Student roster is unavailable for RAH assignment.');
+      return;
+    }
+    const nextStudents = roster || [];
+    setRahStudents(nextStudents);
+    setRahStudentId((current) => nextStudents.some((student) => student.id === current) ? current : nextStudents[0]?.id || '');
+
+    const { data: activities, error: activityError } = await supabase.from('ai_activities')
+      .select('id,title,student_id,created_at')
+      .eq('status', 'assigned')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (activityError) {
+      setRahError('RAH activity records are unavailable. Apply the RAH migration first.');
+      return;
+    }
+    setRahAssignments(activities || []);
+    setRahError('');
+  }, [teacherGradeId]);
 
   useEffect(() => {
-    loadAssignments();
-    if (gradeCourses.length > 0 && !courseId) {
-      setCourseId(gradeCourses[0].id);
+    async function loadTeacherCourses() {
+      if (!teacherGradeId) {
+        setGradeCourses([]);
+        setCourseLoadError('Your account has no assigned grade. Contact an administrator.');
+        return;
+      }
+      setCourseLoadError('');
+      try {
+        const loadedCourses = await ContentService.loadCourses(teacherGradeId, 'published');
+        setGradeCourses(loadedCourses);
+        setCourseId((current) => loadedCourses.some((course) => course.id === current) ? current : loadedCourses[0]?.id || '');
+      } catch (error: unknown) {
+        setGradeCourses([]);
+        setCourseLoadError(error instanceof Error ? error.message : 'Could not load grade courses.');
+      }
     }
-  }, [teacherGradeId]);
+    void Promise.resolve().then(loadTeacherCourses);
+    void Promise.resolve().then(loadAssignments);
+    void Promise.resolve().then(loadRahAssignments);
+  }, [teacherGradeId, loadAssignments, loadRahAssignments]);
+
+  async function assignRahActivity() {
+    if (!rahStudentId || rahBusy) return;
+    setRahBusy(true);
+    setRahError('');
+    setRahMessage('');
+    try {
+      const { data, error } = await supabase.functions.invoke('rah-lms', {
+        body: { mode: 'teacher_activity', student_id: rahStudentId, skill: rahSkill, difficulty: 3 },
+      });
+      if (error) throw new Error(error.message || 'RAH activity generation is unavailable.');
+      if (data?.error) throw new Error(data.error);
+      setRahMessage(`Assigned “${data.activity.title}” to ${data.activity.student_name}.`);
+      await loadRahAssignments();
+    } catch (requestError) {
+      setRahError(requestError instanceof Error ? requestError.message : 'Could not assign a RAH activity.');
+    } finally {
+      setRahBusy(false);
+    }
+  }
 
   const handleAddCriterion = () => {
     setCriteria([...criteria, { title: 'New Criterion', description: '', maxPoints: 20 }]);
@@ -78,10 +150,13 @@ export default function TeacherAssignmentsPage() {
     setCriteria(criteria.filter((_, i) => i !== idx));
   };
 
-  const handleCriterionChange = (idx: number, field: string, val: any) => {
-    const next = [...criteria];
-    next[idx] = { ...next[idx], [field]: val };
-    setCriteria(next);
+  const handleCriterionChange = (idx: number, field: 'title' | 'description' | 'maxPoints', value: string | number) => {
+    setCriteria((current) => current.map((criterion, index) => {
+      if (index !== idx) return criterion;
+      if (field === 'title') return { ...criterion, title: String(value) };
+      if (field === 'description') return { ...criterion, description: String(value) };
+      return { ...criterion, maxPoints: Number(value) };
+    }));
   };
 
   const handleCreateAssignment = async (e: React.FormEvent) => {
@@ -145,8 +220,8 @@ export default function TeacherAssignmentsPage() {
       setDueAt('');
       setCloseAt('');
       loadAssignments();
-    } catch (err: any) {
-      setFormError(err.message || 'Submission error');
+    } catch (error: unknown) {
+      setFormError(error instanceof Error ? error.message : 'Submission error');
     } finally {
       setSaving(false);
     }
@@ -177,6 +252,47 @@ export default function TeacherAssignmentsPage() {
         </button>
       </div>
 
+      <section className="grid gap-5 border border-[#d8d0c2] bg-white p-5 sm:p-6 lg:grid-cols-[1fr_auto] lg:items-start">
+        <div className="space-y-4">
+          <div>
+            <p className="edurah-eyebrow"><span /> RAH TARGETED PRACTICE</p>
+            <h2 className="mt-2 font-serif-heading text-xl font-normal text-[#171819]">Assign AI-generated practice</h2>
+            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-[#6f6b63]">RAH adapts a short activity to saved learning evidence. Answer keys remain server-side; results update the student’s skill record.</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1.5 text-xs font-semibold text-[#555048]">Student
+              <select value={rahStudentId} onChange={(event) => setRahStudentId(event.target.value)} disabled={!rahStudents.length || rahBusy} className="block w-full rounded-lg border border-[#d8d0c2] bg-[#fcfbf9] px-3 py-2.5 text-sm text-[#171819]">
+                {rahStudents.map((student) => <option key={student.id} value={student.id}>{student.full_name}</option>)}
+                {!rahStudents.length && <option value="">No active students in assigned grade</option>}
+              </select>
+            </label>
+            <label className="space-y-1.5 text-xs font-semibold text-[#555048]">Skill
+              <select value={rahSkill} onChange={(event) => setRahSkill(event.target.value)} disabled={rahBusy} className="block w-full rounded-lg border border-[#d8d0c2] bg-[#fcfbf9] px-3 py-2.5 text-sm text-[#171819]">
+                <option value="sentence_structure">Sentence structure</option>
+                <option value="vocabulary_usage">Vocabulary usage</option>
+                <option value="listening_comprehension">Listening comprehension</option>
+                <option value="speaking_fluency">Speaking fluency</option>
+                <option value="pronunciation">Pronunciation</option>
+              </select>
+            </label>
+          </div>
+          {rahError && <p role="alert" className="text-xs text-rose-800">{rahError}</p>}
+          {rahMessage && <p role="status" className="text-xs text-emerald-800">{rahMessage}</p>}
+        </div>
+        <button onClick={assignRahActivity} disabled={!rahStudentId || rahBusy} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1e2e30] px-4 py-3 text-xs font-bold text-white disabled:opacity-50">
+          <Target className="h-4 w-4" /> {rahBusy ? 'Creating activity…' : 'Assign RAH activity'}
+        </button>
+        {rahAssignments.length > 0 && <div className="border-t border-[#e8e2d5] pt-4 lg:col-span-2">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-[#956643]">Active RAH assignments</h3>
+          <ul className="mt-2 divide-y divide-[#e8e2d5]">
+            {rahAssignments.map((activity) => <li key={activity.id} className="flex flex-wrap justify-between gap-2 py-2 text-xs">
+              <span className="font-semibold">{activity.title}</span>
+              <span className="text-[#706b63]">{rahStudents.find((student) => student.id === activity.student_id)?.full_name || 'Assigned student'}</span>
+            </li>)}
+          </ul>
+        </div>}
+      </section>
+
       {/* ASSIGNMENTS LIST */}
       {loading ? (
         <div className="p-12 text-center text-xs text-[#6f6b63]">
@@ -200,7 +316,7 @@ export default function TeacherAssignmentsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {assignments.map((asg) => {
-            const course = ContentService.getCourseById(asg.courseId);
+            const courseTitle = asg.courseTitle || gradeCourses.find((course) => course.id === asg.courseId)?.title;
             const dueDateFormatted = new Date(asg.dueAt).toLocaleDateString('en-US', {
               month: 'short',
               day: 'numeric',
@@ -215,7 +331,7 @@ export default function TeacherAssignmentsPage() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold uppercase tracking-wider font-mono-code text-[#8e5a2b] bg-[#ede6d8] px-2.5 py-0.5 rounded-full border border-[#d8d0c2]">
-                      {course?.title || asg.courseTitle || 'Curriculum Course'}
+                      {courseTitle || 'Curriculum Course'}
                     </span>
                     <span className="text-xs font-mono-code font-bold text-[#171819]">
                       {asg.points} pts
@@ -298,6 +414,7 @@ export default function TeacherAssignmentsPage() {
                 <span>{formError}</span>
               </div>
             )}
+            {courseLoadError && <p role="alert" className="text-xs text-rose-700">{courseLoadError}</p>}
 
             <form onSubmit={handleCreateAssignment} className="space-y-4 text-xs">
               <div className="space-y-1.5">

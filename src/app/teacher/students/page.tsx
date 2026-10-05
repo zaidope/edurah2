@@ -5,47 +5,51 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { AuthService } from '@/lib/auth';
 import { ContentService } from '@/lib/content';
-import { UserProfile, Course } from '@/types';
+import { UserProfile } from '@/types';
 import {
   Users,
   Search,
-  CheckCircle2,
-  BookOpen,
   ShieldCheck,
   Filter,
-  ArrowRight,
   Eye,
-  GraduationCap
 } from 'lucide-react';
 
 export default function TeacherStudentsPage() {
   const { profile, loading: authLoading } = useAuth();
-  const teacherGradeId = profile?.gradeId || 'grade-1';
-  const gradeObj = ContentService.getGradeById(teacherGradeId);
+  const teacherGradeId = profile?.gradeId;
+  const gradeObj = teacherGradeId ? ContentService.getGradeById(teacherGradeId) : null;
 
   const [students, setStudents] = useState<UserProfile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterBatch, setFilterBatch] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     if (authLoading) return;
+    let active = true;
     async function loadData() {
-      setLoading(true);
-      // Strictly isolate to assigned grade
-      const gradeStudents = await AuthService.getStudentsByGrade(teacherGradeId);
-      setStudents(gradeStudents);
-      setLoading(false);
+      if (!teacherGradeId) {
+        setLoadError('Your account has no assigned grade. Contact an administrator.');
+        setStudents([]);
+        setLoading(false);
+        return;
+      }
+      try {
+        const gradeStudents = await AuthService.getStudentsByGrade(teacherGradeId);
+        if (active) setStudents(gradeStudents);
+      } catch (error: unknown) {
+        if (active) setLoadError(error instanceof Error ? error.message : 'Could not load the cohort roster.');
+      } finally {
+        if (active) setLoading(false);
+      }
     }
-    loadData();
+    void Promise.resolve().then(loadData);
+    return () => { active = false; };
   }, [teacherGradeId, authLoading]);
 
   // Extract unique academic batches
-  const availableBatches = Array.from(
-    new Set(students.map((s) => s.academicBatch || '2025–2026'))
-  );
-  if (!availableBatches.includes('2025–2026')) availableBatches.push('2025–2026');
-  if (!availableBatches.includes('2026–2027')) availableBatches.push('2026–2027');
+  const availableBatches = Array.from(new Set(students.flatMap((student) => student.academicBatch ? [student.academicBatch] : [])));
 
   const filteredStudents = students.filter((s) => {
     const matchesSearch =
@@ -54,7 +58,7 @@ export default function TeacherStudentsPage() {
       s.studentId.toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesBatch =
-      filterBatch === 'all' || (s.academicBatch || '2025–2026') === filterBatch;
+      filterBatch === 'all' || s.academicBatch === filterBatch;
 
     return matchesSearch && matchesBatch;
   });
@@ -106,6 +110,8 @@ export default function TeacherStudentsPage() {
           </div>
         </div>
       </div>
+
+      {loadError && <div role="alert" className="border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900">{loadError}</div>}
 
       {/* ROSTER TABLE */}
       <div className="edurah-card-warm rounded-2xl overflow-hidden shadow-xs border border-[#d8d0c2]">

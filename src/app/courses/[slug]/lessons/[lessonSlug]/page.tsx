@@ -6,6 +6,7 @@ import { useParams, notFound } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { ContentService } from '@/lib/content';
 import { ProgressService } from '@/lib/progress';
+import { Course } from '@/types';
 import VideoPlayer from '@/components/video/VideoPlayer';
 import LessonSidebar from '@/components/course/LessonSidebar';
 import LessonControls from './LessonControls';
@@ -17,7 +18,6 @@ import {
   Award,
   ChevronRight,
   Lightbulb,
-  ArrowLeft,
   Lock
 } from 'lucide-react';
 
@@ -27,8 +27,30 @@ export default function LessonDetailPage() {
   const lessonSlug = params?.lessonSlug as string;
   const { profile, loading } = useAuth();
   const [controlsKey, setControlsKey] = React.useState(0);
+  const [course, setCourse] = React.useState<Course | null>(null);
+  const [courseLoading, setCourseLoading] = React.useState(true);
+  const [courseLoadError, setCourseLoadError] = React.useState('');
 
-  const data = ContentService.getLessonBySlug(slug, lessonSlug);
+  React.useEffect(() => {
+    if (loading || !slug || !lessonSlug) return;
+    let active = true;
+    void Promise.resolve().then(async () => {
+      if (!active) return;
+      setCourseLoading(true);
+      setCourseLoadError('');
+      try {
+        const gradeId = profile?.role === 'student' || profile?.role === 'teacher' ? profile.gradeId : undefined;
+        const status = profile?.role === 'admin' || profile?.role === 'teacher' ? 'all' : 'published';
+        const courses = await ContentService.loadCourses(gradeId, status);
+        if (active) setCourse(courses.find((item) => item.slug === slug) || null);
+      } catch (error: unknown) {
+        if (active) setCourseLoadError(error instanceof Error ? error.message : 'Could not load this lesson.');
+      } finally {
+        if (active) setCourseLoading(false);
+      }
+    });
+    return () => { active = false; };
+  }, [slug, lessonSlug, loading, profile?.gradeId, profile?.role]);
 
   if (loading) {
     return (
@@ -38,11 +60,24 @@ export default function LessonDetailPage() {
     );
   }
 
-  if (!data) {
+  if (courseLoading) {
+    return <div className="min-h-screen flex items-center justify-center bg-[#f6f2e9]"><div className="w-8 h-8 border-2 border-[#d8a471] border-t-transparent rounded-full animate-spin" /></div>;
+  }
+
+  if (courseLoadError) {
+    return <div role="alert" className="mx-auto my-16 max-w-3xl border border-rose-300 bg-rose-50 px-5 py-4 text-sm text-rose-900">{courseLoadError}</div>;
+  }
+
+  if (!course) {
     notFound();
   }
 
-  const { lesson, course, nextLesson, prevLesson } = data;
+  const allLessons = course.chapters.flatMap((chapter) => chapter.lessons);
+  const lessonIndex = allLessons.findIndex((item) => item.slug === lessonSlug);
+  const lesson = allLessons[lessonIndex];
+  if (!lesson) notFound();
+  const nextLesson = allLessons[lessonIndex + 1];
+  const prevLesson = allLessons[lessonIndex - 1];
   const courseGradeObj = ContentService.getGradeById(course.gradeId);
   const userGradeObj = profile?.gradeId ? ContentService.getGradeById(profile.gradeId) : null;
 
@@ -241,7 +276,7 @@ export default function LessonDetailPage() {
                 <div>
                   <h3 className="font-serif-heading text-xl font-normal text-white">Lesson Quiz Available</h3>
                   <p className="text-xs text-[#e9e4d7]/70 mt-1 leading-relaxed">
-                    Verify your understanding of this lesson's core principles.
+                    Verify your understanding of this lesson&apos;s core principles.
                   </p>
                 </div>
                 <Link

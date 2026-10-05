@@ -1,10 +1,11 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, notFound } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { ContentService } from '@/lib/content';
+import { Quiz } from '@/types';
 import QuizEngine from '@/components/quiz/QuizEngine';
 import GradeForbiddenAccess from '@/components/auth/GradeForbiddenAccess';
 import { ChevronLeft, Award } from 'lucide-react';
@@ -15,11 +16,29 @@ export default function QuizDetailPage() {
   const params = useParams();
   const quizId = params?.quizId as string;
   const { profile, loading } = useAuth();
+  const [quiz, setQuiz] = useState<Quiz | null>(null);
+  const [quizLoading, setQuizLoading] = useState(true);
+  const [quizError, setQuizError] = useState('');
 
-  const rawQuiz = ContentService.getQuizById(quizId);
-  const quiz = profile?.role === 'student' ? ContentService.getQuizForStudent(quizId) : rawQuiz;
+  useEffect(() => {
+    if (loading || !profile || !quizId) return;
+    let active = true;
+    const gradeId = profile.role === 'admin' ? undefined : profile.gradeId;
+    const status = profile.role === 'student' ? 'published' : 'all';
+    ContentService.loadQuizzes(gradeId, undefined, status)
+      .then((loadedQuizzes) => {
+        if (active) setQuiz(loadedQuizzes.find((item) => item.id === quizId) || null);
+      })
+      .catch((error: unknown) => {
+        if (active) setQuizError(error instanceof Error ? error.message : 'Unable to load this assessment.');
+      })
+      .finally(() => {
+        if (active) setQuizLoading(false);
+      });
+    return () => { active = false; };
+  }, [loading, profile, quizId]);
 
-  if (loading) {
+  if (loading || quizLoading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center bg-[#f6f2e9]">
         <div className="w-8 h-8 rounded-full border-2 border-[#8e5a2b] border-t-transparent animate-spin" />
@@ -44,6 +63,10 @@ export default function QuizDetailPage() {
         resourceType="quiz"
       />
     );
+  }
+
+  if (quizError) {
+    return <div role="alert" className="mx-auto my-16 max-w-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900">{quizError}</div>;
   }
 
   // 2. Grade boundary restriction: Student/Teacher must belong to quiz's grade

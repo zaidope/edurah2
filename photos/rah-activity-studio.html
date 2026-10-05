@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RAH Activity Studio | Edurah</title>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+:root{--navy:#171819;--blue:#d8a471;--purple:#ba6c45;--teal:#81512f;--orange:#dca66c;--muted:#555048;--line:#d8d0c2}
+*{box-sizing:border-box}body{margin:0;background:#f6f2e9;color:var(--navy);font-family:"-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif",sans-serif}.app{display:grid;grid-template-columns:265px 1fr;min-height:100vh}
+.sidebar{background:#fff;border-right:1px solid var(--line);padding:22px 15px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}.brand{height:104px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;border-radius:18px;background:linear-gradient(135deg,#fff,#f6f2e9)}.brand img{width:210px;height:96px;object-fit:contain}
+.role-badge{display:flex;gap:10px;align-items:center;padding:13px 14px;border-radius:15px;background:linear-gradient(135deg,#f1e6d9,#f6f2e9);margin:5px 7px 20px;font-size:12px;font-weight:800}.role-badge div{width:35px;height:35px;border-radius:12px;background:linear-gradient(135deg,#d8a471,#ba6c45);display:grid;place-items:center;color:#fff}
+.menu{display:grid;gap:5px}.menu a{display:flex;align-items:center;gap:13px;padding:13px 14px;border-radius:13px;color:#706b63;font-size:14px;font-weight:700;text-decoration:none;transition:.2s}.menu a:hover{background:#f6f2e9;color:var(--navy)}.menu a.active{background:linear-gradient(90deg,#f1e6d9,#f6f2e9);color:#81512f}.menu i{width:19px}.sidebar-bottom{margin-top:auto;border-top:1px solid var(--line);padding-top:15px}.user{display:flex;align-items:center;gap:10px;padding:10px}.avatar{width:41px;height:41px;border-radius:14px;background:linear-gradient(135deg,#dca66c,#d8a471);color:#fff;display:grid;place-items:center;font-family:Georgia,serif;font-weight:800}.user b{font-size:12px;display:block}.user small{font-size:10px;color:var(--muted)}.logout{margin-left:auto;border:0;background:none;color:#8b8577;cursor:pointer}
+.main{padding:28px 36px 60px;max-width:1550px;width:100%;margin:auto}.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:28px}.crumb{font-size:12px;color:#8b8577;font-weight:700}h1{font-family:Georgia,serif;margin:7px 0 0;font-size:34px;letter-spacing:-1.4px}.top-actions{display:flex;align-items:center;gap:10px}.icon-btn{width:43px;height:43px;border-radius:14px;border:1px solid var(--line);background:#fff;display:grid;place-items:center;color:#555048;cursor:pointer}.profile-dot{width:43px;height:43px;border-radius:14px;background:linear-gradient(135deg,#81512f,#d8a471);color:#fff;display:grid;place-items:center;font-weight:800}
+.studio-hero{display:grid;grid-template-columns:1.35fr .65fr;gap:25px;min-height:220px;padding:30px 34px;border-radius:28px;background:linear-gradient(120deg,#1e2e30,#81512f 55%,#81512f);color:#fff;overflow:hidden;position:relative}.studio-hero:after{content:"";position:absolute;width:310px;height:310px;border-radius:50%;right:-80px;top:-120px;border:1px solid #ffffff2a;box-shadow:0 0 0 38px #ffffff09,0 0 0 78px #ffffff06}.hero-copy{position:relative;z-index:1}.eyeline{font-size:10px;font-weight:800;letter-spacing:1.2px;color:#efe3d4}.hero-copy h2{font-family:Georgia,serif;font-size:30px;line-height:1.2;margin:11px 0 8px;letter-spacing:-1px}.hero-copy p{max-width:630px;margin:0;color:#efe3d4;font-size:13px;line-height:1.65}.hero-points{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}.hero-points span{font-size:10px;font-weight:800;padding:8px 10px;border-radius:50px;background:#ffffff13;border:1px solid #ffffff20}
+.rah-visual{position:relative;z-index:1;display:grid;place-items:center}.orb{width:105px;height:105px;border-radius:37px;background:radial-gradient(circle at 35% 25%,#f6f2e9,#d8a471 47%,#1e2e30 78%);box-shadow:inset -13px -12px 23px #1e2e30,0 18px 42px #101d5d77;display:flex;flex-direction:column;align-items:center;justify-content:center}.orb i{color:#e7e0d0}.orb b{font-family:Georgia,serif;font-size:17px}.orb small{font-size:9px;color:#f6f2e9}.float{position:absolute;width:45px;height:45px;border-radius:15px;background:#ffffff16;border:1px solid #ffffff2c;display:grid;place-items:center}.fl1{left:10%;top:16%}.fl2{right:8%;bottom:12%}
+.section-title{display:flex;justify-content:space-between;align-items:end;margin:30px 0 15px}.section-title h2{font-family:Georgia,serif;font-size:22px;margin:0}.section-title p{font-size:12px;color:#8b8577;margin:5px 0 0}.step-label{font-size:10px;font-weight:800;color:#d8a471;background:#f6f2e9;padding:7px 10px;border-radius:50px}
+.setup-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.panel{background:#fff;border:1px solid var(--line);border-radius:23px;padding:22px;box-shadow:0 10px 30px #203d7307}.panel h3{font-family:Georgia,serif;margin:0 0 5px;font-size:17px}.panel>p{font-size:11px;color:#d8a471;margin:0 0 17px}.skill-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.skill-btn,.level-btn{font-family:inherit;cursor:pointer;border:1px solid var(--line);background:#fff;border-radius:15px;padding:13px;text-align:left;display:flex;align-items:center;gap:10px;transition:.2s;color:var(--navy)}.skill-btn:hover,.level-btn:hover{transform:translateY(-2px);box-shadow:0 12px 25px #203d730d}.skill-btn.selected,.level-btn.selected{border-color:#d8a471;background:linear-gradient(135deg,#f6f2e9,#f6f2e9);box-shadow:0 10px 25px #644bd412}.sicon{width:38px;height:38px;border-radius:12px;display:grid;place-items:center}.blue{background:#f6f2e9;color:#81512f}.purple{background:#f6f2e9;color:#ba6c45}.teal{background:#e7e0d0;color:#1e2e30}.orange{background:#f6f2e9;color:#d8a471}.skill-btn b{font-size:12px;display:block}.skill-btn small{font-size:9px;color:#d8a471}.level-grid{display:grid;gap:10px}.level-btn{justify-content:space-between}.level-btn div b{font-size:12px;display:block}.level-btn div small{font-size:9px;color:#d8a471}.level-dot{width:10px;height:10px;border-radius:50%;background:#efe3d4}.level-btn.selected .level-dot{background:#ba6c45;box-shadow:0 0 0 5px #ba6c451a}
+.generate-wrap{margin-top:20px;display:flex;align-items:center;justify-content:space-between;gap:15px;background:linear-gradient(100deg,#f6f2e9,#f6f2e9,#f6f2e9);padding:18px;border-radius:19px}.generate-wrap p{font-size:11px;color:#81512f;margin:0;line-height:1.55}.generate-btn{border:0;border-radius:13px;padding:13px 17px;white-space:nowrap;background:linear-gradient(100deg,#d8a471,#ba6c45);color:#fff;font:inherit;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 10px 20px #6045c428}.generate-btn:hover{transform:translateY(-2px)}
+.activity-workspace{display:none;margin-top:26px;grid-template-columns:1.25fr .75fr;gap:20px}.activity-workspace.show{display:grid}.activity-card{background:#fff;border:1px solid var(--line);border-radius:24px;padding:26px;min-height:470px}.activity-head{display:flex;justify-content:space-between;gap:15px;align-items:start;border-bottom:1px solid var(--line);padding-bottom:18px}.activity-head h2{font-family:Georgia,serif;font-size:22px;margin:0 0 5px}.activity-head p{font-size:11px;color:#8b8577;margin:0}.activity-badge{font-size:9px;font-weight:800;color:#d8a471;background:#ede8dc;padding:7px 9px;border-radius:50px}.question-number{font-size:10px;font-weight:800;color:#d8a471;margin-top:24px;text-transform:uppercase;letter-spacing:.7px}.question{font-family:Georgia,serif;font-size:19px;line-height:1.45;margin:9px 0 18px}.options{display:grid;gap:10px}.option{border:1px solid var(--line);background:#fff;border-radius:14px;padding:13px;display:flex;gap:11px;align-items:center;text-align:left;font:inherit;font-size:12px;color:var(--navy);cursor:pointer;transition:.2s}.option:hover{border-color:#e7e0d0;background:#f6f2e9}.option.selected{border:2px solid #d8a471;background:#f6f2e9}.option-key{width:26px;height:26px;border-radius:9px;background:#f6f2e9;color:#81512f;display:grid;place-items:center;font-size:10px;font-weight:800;flex:none}.option.selected .option-key{background:#ba6c45;color:#fff}.answer-input{width:100%;border:1px solid var(--line);border-radius:14px;padding:14px;font:inherit;font-size:13px;min-height:82px;resize:vertical}.answer-input:focus{outline:none;border-color:#d8a471;box-shadow:0 0 0 4px #d8a47111}.activity-footer{display:flex;justify-content:space-between;align-items:center;margin-top:24px}.count{font-size:11px;color:#d8a471}.next-btn,.submit-btn{border:0;border-radius:12px;padding:12px 16px;background:#171819;color:#fff;font:inherit;font-size:11px;font-weight:800;cursor:pointer}.next-btn:disabled{opacity:.4;cursor:not-allowed}
+.rah-side{display:grid;gap:16px;align-content:start}.guide-card{background:linear-gradient(145deg,#fcfbf9,#f6f2e9);border:1px solid #fff;border-radius:24px;padding:22px}.guide-top{display:flex;gap:12px;align-items:center}.mini-orb{width:49px;height:49px;border-radius:17px;background:radial-gradient(circle at 30% 25%,#f6f2e9,#d8a471 50%,#1e2e30);color:#efe3d4;display:grid;place-items:center;font-size:21px}.guide-card h3{font-family:Georgia,serif;margin:0;font-size:16px}.guide-card small{font-size:10px;color:#81512f}.guide-tip{background:#fff;border-radius:14px;padding:13px;font-size:11px;line-height:1.6;color:#81512f;margin-top:15px}.guide-btn{margin-top:12px;width:100%;border:0;border-radius:11px;padding:11px;background:#fff;color:#d8a471;font:inherit;font-size:11px;font-weight:800;cursor:pointer}
+.progress-card{background:#fff;border:1px solid var(--line);border-radius:22px;padding:20px}.progress-card h3{font-family:Georgia,serif;font-size:15px;margin:0 0 15px}.mini-progress{display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;font-size:10px;font-weight:700;color:#81512f}.track{height:7px;background:#ede8dc;border-radius:50px;overflow:hidden}.track span{display:block;height:100%;background:linear-gradient(90deg,#d8a471,#ba6c45,#81512f);border-radius:50px;transition:.5s}.result-card{display:none;background:linear-gradient(145deg,#171819,#81512f);color:#fff;border-radius:24px;padding:24px;overflow:hidden;position:relative}.result-card.show{display:block}.result-card:after{content:"";position:absolute;width:180px;height:180px;border-radius:50%;right:-60px;top:-70px;border:1px solid #ffffff25}.result-card h3{font-family:Georgia,serif;margin:5px 0;font-size:22px;position:relative;z-index:1}.result-card p{font-size:11px;line-height:1.6;color:#efe3d4;position:relative;z-index:1}.result-score{font-family:Georgia,serif;font-size:38px;margin:13px 0 2px;position:relative;z-index:1}.xp-row{display:flex;gap:10px;margin-top:16px;position:relative;z-index:1}.xp-row span{padding:8px 10px;border-radius:9px;background:#ffffff12;font-size:10px;font-weight:800}
+.feedback{display:none;margin-top:20px;padding:15px;border-radius:15px;background:#f6f2e9;color:#1e2e30;font-size:11px;line-height:1.6}.feedback.show{display:block}#toast{position:fixed;right:25px;bottom:25px;background:#171819;color:#fff;padding:14px 18px;border-radius:14px;font-size:13px;font-weight:700;box-shadow:0 20px 40px #17181944;opacity:0;transform:translateY(20px);pointer-events:none;transition:.3s;z-index:10}#toast.show{opacity:1;transform:translateY(0)}
+@media(max-width:1100px){.studio-hero,.setup-grid,.activity-workspace.show{grid-template-columns:1fr}.rah-visual{display:none}}@media(max-width:760px){.app{grid-template-columns:1fr}.sidebar{position:relative;height:auto;padding:10px 14px;display:block}.brand{height:70px;width:190px;margin:0 auto 8px}.brand img{height:65px;width:180px}.role-badge,.sidebar-bottom{display:none}.menu{grid-template-columns:repeat(4,1fr);overflow:auto}.menu a{justify-content:center;padding:10px}.menu span{display:none}.main{padding:22px 16px}h1{font-size:27px}.top-actions .icon-btn{display:none}.studio-hero{padding:26px;min-height:220px}.hero-copy h2{font-size:25px}.skill-grid{grid-template-columns:1fr}.generate-wrap{display:block}.generate-btn{width:100%;margin-top:12px}.activity-card{padding:19px}}
+</style>
+</head>
+<body data-edurah-guard="true">
+<div class="app">
+<aside class="sidebar">
+<a class="brand" href="index.html" aria-label="Edurah Home"><img src="edurah-logo.png" alt="Edurah Logo"></a>
+<div class="role-badge"><div><i data-lucide="sparkles" size="18"></i></div><span>Student Workspace</span></div>
+<nav class="menu">
+<a href="student-dashboard.html"><i data-lucide="layout-dashboard"></i><span>Dashboard</span></a>
+<a href="my-learning.html"><i data-lucide="book-open"></i><span>My Learning</span></a>
+<a href="rah-activity-studio.html" class="active"><i data-lucide="sparkles"></i><span>RAH Activities</span></a>
+<a href="skill-insights.html"><i data-lucide="chart-no-axes-combined"></i><span>Skill Insights</span></a>
+<a href="speaking-studio.html"><i data-lucide="mic"></i><span>Speaking Studio</span></a>
+<a href="edurah-passport.html" ><i data-lucide="award"></i><span>Edurah Passport</span></a>
+<a href="#"><i data-lucide="user"></i><span>Profile</span></a>
+</nav>
+<div class="sidebar-bottom"><div class="user"><div class="avatar">S</div><div><b>Edurah Student</b><small>Active account</small></div><button class="logout" data-edurah-logout><i data-lucide="log-out" size="18"></i></button></div></div>
+</aside>
+
+<main class="main">
+<div class="topbar"><div><div class="crumb">EDURAH / STUDENT / RAH ACTIVITY STUDIO</div><h1>RAH Activity Studio ✨</h1></div><div class="top-actions"><button class="icon-btn"><i data-lucide="search"></i></button><button class="icon-btn"><i data-lucide="bell"></i></button><div class="profile-dot">S</div></div></div>
+
+<section class="studio-hero">
+<div class="hero-copy"><div class="eyeline">POWERED BY RAH INTELLIGENCE</div><h2>Practise smarter. Grow with every activity.</h2><p>Choose the skill you want to strengthen. RAH will create a focused practice activity and give you feedback when you complete it.</p><div class="hero-points"><span>✦ Personalised Practice</span><span>◉ Instant Feedback</span><span>⚡ Earn XP</span></div></div>
+<div class="rah-visual"><div class="orb"><i data-lucide="sparkles"></i><b>RAH</b><small>Your AI Guide</small></div><div class="float fl1"><i data-lucide="brain"></i></div><div class="float fl2"><i data-lucide="zap"></i></div></div>
+</section>
+
+<div class="section-title"><div><h2>Create Your Activity</h2><p>Tell RAH what you want to practise.</p></div><span class="step-label">STEP 1 OF 3</span></div>
+
+<section class="setup-grid">
+<div class="panel"><h3>Choose a skill</h3><p>Select the learning area you want to focus on today.</p><div class="skill-grid">
+<button class="skill-btn selected" data-skill="Vocabulary" onclick="selectSkill(this)"><div class="sicon blue"><i data-lucide="notebook-tabs"></i></div><div><b>Vocabulary</b><small>Words & expression</small></div></button>
+<button class="skill-btn" data-skill="Sentence Building" onclick="selectSkill(this)"><div class="sicon purple"><i data-lucide="type"></i></div><div><b>Sentence Building</b><small>Clearer sentences</small></div></button>
+<button class="skill-btn" data-skill="Listening" onclick="selectSkill(this)"><div class="sicon teal"><i data-lucide="headphones"></i></div><div><b>Listening</b><small>Understand ideas</small></div></button>
+<button class="skill-btn" data-skill="Speaking" onclick="selectSkill(this)"><div class="sicon orange"><i data-lucide="mic"></i></div><div><b>Speaking</b><small>Express confidently</small></div></button>
+</div></div>
+
+<div class="panel"><h3>Choose your challenge level</h3><p>RAH will adapt the activity to the level you choose.</p><div class="level-grid">
+<button class="level-btn" data-level="Foundation" onclick="selectLevel(this)"><div><b>Foundation</b><small>Build confidence with guided practice</small></div><span class="level-dot"></span></button>
+<button class="level-btn selected" data-level="Developing" onclick="selectLevel(this)"><div><b>Developing</b><small>Apply your skills with moderate challenge</small></div><span class="level-dot"></span></button>
+<button class="level-btn" data-level="Challenge" onclick="selectLevel(this)"><div><b>Challenge</b><small>Push your skills with advanced practice</small></div><span class="level-dot"></span></button>
+</div></div>
+</section>
+
+<div class="generate-wrap"><p><b id="selectionText">Vocabulary · Developing</b><br>RAH will create a short interactive activity based on this focus.</p><button class="generate-btn" onclick="generateActivity()"><i data-lucide="sparkles" size="15" style="vertical-align:-3px"></i> Generate My Activity</button></div>
+
+<section class="activity-workspace" id="workspace">
+<div class="activity-card">
+<div class="activity-head"><div><div class="eyeline" style="color:#ba6c45">GENERATED BY RAH</div><h2 id="activityTitle">Vocabulary in Context</h2><p id="activityMeta">Developing level · 3 questions · Estimated 8 minutes</p></div><span class="activity-badge" id="badge">READY</span></div>
+<div class="question-number" id="qNumber">QUESTION 1 OF 3</div>
+<div class="question" id="questionText"></div>
+<div id="answerArea"></div>
+<div class="feedback" id="feedback"></div>
+<div class="activity-footer"><span class="count" id="progressCount">0 of 3 completed</span><button class="next-btn" id="nextBtn" onclick="nextQuestion()">Next Question <i data-lucide="arrow-right" size="14" style="vertical-align:-3px"></i></button></div>
+</div>
+
+<aside class="rah-side">
+<div class="guide-card"><div class="guide-top"><div class="mini-orb">✦</div><div><h3>RAH is with you</h3><small>Guidance when you need it</small></div></div><div class="guide-tip" id="tipText">Read the question carefully, then choose the answer that best fits the meaning.</div><button class="guide-btn" onclick="showHint()">Give Me a Hint 💡</button></div>
+<div class="progress-card"><h3>Activity Progress</h3><div class="mini-progress"><span>Questions completed</span><b id="sideProgress">0 / 3</b></div><div class="track"><span id="progressBar" style="width:0%"></span></div><div class="mini-progress" style="margin-top:18px"><span>XP available</span><b>+120 XP</b></div></div>
+<div class="result-card" id="resultCard"><div class="eyeline">ACTIVITY COMPLETE</div><div class="result-score" id="resultScore">100%</div><h3 id="resultTitle">Excellent work!</h3><p id="resultText">Your activity results have been recorded as new learning evidence.</p><div class="xp-row"><span id="earnedXP">+120 XP</span><span>Skill updated</span></div><button class="guide-btn" style="margin-top:16px" onclick="location.href='my-learning.html'">Return to My Learning <i data-lucide="arrow-right" size="14" style="vertical-align:-3px"></i></button></div>
+</aside>
+</section>
+</main></div><div id="toast"></div>
+
+<script>
+lucide.createIcons();
+let selectedSkill='Vocabulary', selectedLevel='Developing', current=0, answers=[], generated=[];
+
+const activityBank={
+Vocabulary:[
+{q:'Choose the word that best completes the sentence: “The teacher gave us a very ____ explanation, so everyone understood.”',options:['confusing','clear','silent','empty'],correct:1,hint:'Look for a word that means easy to understand.'},
+{q:'Which word is closest in meaning to “confident”?',options:['uncertain','sure','quiet','careless'],correct:1,hint:'Think about how someone feels when they believe in themselves.'},
+{q:'Choose the best sentence using the word “improve”.',options:['I improve my lunch.','Practice can improve your speaking skills.','The improve is blue.','I am improve yesterday.'],correct:1,hint:'“Improve” means to make something better or become better.'}
+],
+'Sentence Building':[
+{q:'Choose the clearest sentence.',options:['Because tired I was, slept early.','I slept early because I was tired.','I because tired slept early was.','Early slept because I tired.'],correct:1,hint:'Start with a clear subject and verb, then add the reason.'},
+{q:'Which sentence correctly connects two ideas?',options:['I practised. I improved, because.','I practised regularly, so my confidence improved.','So practised I confidence improved.','My improved practised confidence.'],correct:1,hint:'Use “so” to show a result.'},
+{q:'Write one clear sentence about a skill you want to improve.',type:'text',hint:'Use: I want to improve my ___ because ___.'}
+],
+Listening:[
+{q:'Imagine you hear: “The meeting has been moved from Monday to Wednesday.” What changed?',options:['The location','The day','The speaker','The topic'],correct:1,hint:'Focus on the two days mentioned.'},
+{q:'Which detail would be most useful when listening for instructions?',options:['The speaker’s favourite colour','The order of the steps','The weather last week','The title of a book'],correct:1,hint:'Instructions tell you what to do and in what sequence.'},
+{q:'Choose the best response after hearing a task you did not understand.',options:['Ignore it.','Ask for clarification politely.','Guess without listening.','Change the topic.'],correct:1,hint:'Good communication includes asking for help when needed.'}
+],
+Speaking:[
+{q:'Which opening sounds most confident for a short introduction?',options:['Maybe I am... I do not know.','Hello everyone, I’m excited to share a little about myself.','I cannot speak today.','Nothing to say.'],correct:1,hint:'Choose an opening that is clear, positive and direct.'},
+{q:'What can help make your speaking easier to understand?',options:['Speaking as fast as possible','Using a clear pace and pausing between ideas','Avoiding eye contact completely','Using only one-word answers'],correct:1,hint:'Give your listener time to understand each idea.'},
+{q:'Write a 1–2 sentence introduction for yourself.',type:'text',hint:'Try: Hello, I’m ___. Today I’d like to share ___.'}
+]
+};
+
+function selectSkill(btn){document.querySelectorAll('.skill-btn').forEach(x=>x.classList.remove('selected'));btn.classList.add('selected');selectedSkill=btn.dataset.skill;updateSelection()}
+function selectLevel(btn){document.querySelectorAll('.level-btn').forEach(x=>x.classList.remove('selected'));btn.classList.add('selected');selectedLevel=btn.dataset.level;updateSelection()}
+function updateSelection(){document.getElementById('selectionText').textContent=selectedSkill+' · '+selectedLevel;}
+function generateActivity(){
+ generated=activityBank[selectedSkill];current=0;answers=[];
+ document.getElementById('workspace').classList.add('show');
+ document.getElementById('activityTitle').textContent=selectedSkill+' Focus Activity';
+ document.getElementById('activityMeta').textContent=selectedLevel+' level · 3 questions · Estimated 8 minutes';
+ document.getElementById('badge').textContent='ACTIVE';
+ document.getElementById('resultCard').classList.remove('show');
+ renderQuestion();
+ setTimeout(()=>document.getElementById('workspace').scrollIntoView({behavior:'smooth',block:'start'}),80);
+ showToast('RAH created your personalised activity!');
+}
+function renderQuestion(){
+ const item=generated[current];document.getElementById('qNumber').textContent='QUESTION '+(current+1)+' OF '+generated.length;document.getElementById('questionText').textContent=item.q;
+ const area=document.getElementById('answerArea');area.innerHTML='';
+ document.getElementById('feedback').classList.remove('show');
+ document.getElementById('tipText').textContent='Read the question carefully, then choose the answer that best fits the meaning.';
+ if(item.type==='text'){
+   area.innerHTML='<textarea class="answer-input" id="textAnswer" placeholder="Write your answer here..."></textarea>';
+ }else{
+   item.options.forEach((opt,i)=>{const b=document.createElement('button');b.className='option';b.innerHTML='<span class="option-key">'+String.fromCharCode(65+i)+'</span><span>'+opt+'</span>';b.onclick=()=>selectOption(i,b);area.appendChild(b)});
+ }
+ document.getElementById('nextBtn').innerHTML=current===generated.length-1?'Submit Activity <i data-lucide="check" size="14" style="vertical-align:-3px"></i>':'Next Question <i data-lucide="arrow-right" size="14" style="vertical-align:-3px"></i>';
+ lucide.createIcons();
+}
+function selectOption(i,btn){document.querySelectorAll('.option').forEach(x=>x.classList.remove('selected'));btn.classList.add('selected');answers[current]=i;}
+function nextQuestion(){
+ const item=generated[current];
+ if(item.type==='text'){const v=document.getElementById('textAnswer').value.trim();if(!v){showToast('Write your answer before continuing.');return}answers[current]=v;}
+ else if(answers[current]===undefined){showToast('Please choose an answer first.');return}
+ current++;
+ updateProgress();
+ if(current<generated.length)renderQuestion(); else finishActivity();
+}
+function updateProgress(){let pct=Math.min(current/generated.length*100,100);document.getElementById('sideProgress').textContent=Math.min(current,generated.length)+' / '+generated.length;document.getElementById('progressBar').style.width=pct+'%';document.getElementById('progressCount').textContent=Math.min(current,generated.length)+' of '+generated.length+' completed';}
+function finishActivity(){
+ let correct=0;generated.forEach((q,i)=>{if(q.type==='text'){if((answers[i]||'').length>10)correct++;}else if(answers[i]===q.correct)correct++;});
+ let score=Math.round(correct/generated.length*100);
+ document.querySelector('.activity-card').innerHTML='<div class="activity-head"><div><div class="eyeline" style="color:#81512f">ACTIVITY SUBMITTED</div><h2>RAH has analysed your activity</h2><p>Your answers are now part of your learning evidence.</p></div><span class="activity-badge">COMPLETE</span></div><div style="padding:35px 0 10px;text-align:center"><div style="width:90px;height:90px;border-radius:50%;margin:auto;background:linear-gradient(135deg,#f1e6d9,#ede8dc);display:grid;place-items:center;color:#81512f"><i data-lucide="circle-check-big" size="42"></i></div><h2 style="font-family:Georgia,serif;font-weight:400;margin:18px 0 8px">Great job!</h2><p style="font-size:12px;color:#555048;max-width:480px;margin:auto;line-height:1.7">You completed a personalised '+selectedSkill+' activity at the '+selectedLevel+' level.</p><button class="generate-btn" style="margin-top:22px" onclick="location.href=\'my-learning.html\'">Return to My Learning</button></div>';
+ document.getElementById('resultCard').classList.add('show');document.getElementById('resultScore').textContent=score+'%';document.getElementById('resultTitle').textContent=score>=67?'Excellent progress!':'Good effort — keep practising!';document.getElementById('resultText').textContent='RAH recorded this '+selectedSkill+' activity and updated your learning evidence for future recommendations.';document.getElementById('earnedXP').textContent='+'+(score>=67?120:80)+' XP';updateProgress();lucide.createIcons();showToast('Activity complete! Learning evidence updated.');
+}
+function showHint(){let hint=generated[current]?.hint||'Take your time and think about the skill you are practising.';document.getElementById('tipText').textContent='💡 '+hint;}
+function showToast(message){const t=document.getElementById('toast');t.textContent=message;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600)}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="edurah-config.js"></script>
+<script src="edurah-auth.js"></script>
+<script src="edurah-live-data.js"></script>
+</body></html>

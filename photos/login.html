@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login | Edurah</title>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+:root{--ink:#171819;--night:#0b0d0e;--moss:#152124;--pine:#1e2e30;--amber:#d8a471;--amber-hover:#e8b57c;--gold:#dca66c;--rust:#ba6c45;--deep:#81512f;--bone:#e9e4d7;--muted:#555048;--line:#d8d0c2;--bg:#f6f2e9}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:var(--ink);min-height:100vh;background:var(--bg);overflow-x:hidden}
+.page{min-height:100vh;display:grid;grid-template-columns:1.05fr .95fr}
+.login-side{display:flex;align-items:center;justify-content:center;padding:55px 40px;position:relative}
+.login-side:before{content:"";position:absolute;width:480px;height:480px;border-radius:50%;background:radial-gradient(circle,rgba(216,164,113,.14) 0,transparent 68%);left:-180px;top:-150px;z-index:-1}
+.wrap{width:min(100%,570px)}.brand{display:inline-flex;width:255px;height:112px;align-items:center;justify-content:center;background:#fff;border-radius:12px;padding:6px 12px;box-shadow:0 15px 40px rgba(23,24,25,.1);margin-bottom:35px;border:1px solid var(--line)}
+.brand img{width:235px;height:100px;object-fit:contain}
+.back{position:absolute;top:34px;left:40px;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;display:flex;gap:7px;align-items:center}
+h1{font-family:Georgia,'Times New Roman',Cambria,serif;font-weight:400;font-size:43px;letter-spacing:-.04em;line-height:1.08;margin:0 0 10px;color:var(--ink)}.intro{font-size:16px;line-height:1.6;color:var(--muted);margin:0 0 28px}
+.roles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:26px}.role{border:1px solid var(--line);background:#fff;border-radius:10px;padding:17px 10px;text-align:center;cursor:pointer;transition:.25s;box-shadow:0 1px 4px rgba(23,24,25,.03);font-weight:700;font-size:12px;letter-spacing:.02em;color:var(--muted)}
+.role:hover{transform:translateY(-3px);border-color:#d8a471}.role.active{border-color:var(--amber);color:var(--ink);background:linear-gradient(#fff,#f6f2e9)}.role-icon{width:44px;height:44px;margin:0 auto 9px;border-radius:10px;display:grid;place-items:center;position:relative;overflow:hidden}.role-icon svg{position:relative;z-index:1}.student .role-icon{background:#f1e6d9;color:var(--deep)}.teacher .role-icon{background:#efe3d4;color:var(--rust)}.school .role-icon{background:#e7e0d0;color:var(--pine)}
+form{background:#fff;border:1px solid var(--line);border-radius:14px;padding:28px;box-shadow:0 4px 20px -2px rgba(23,24,25,.05)}label{display:block;font-size:13px;font-weight:700;margin-bottom:8px;color:var(--ink)}.field{position:relative;margin-bottom:18px}.field i{position:absolute;left:16px;top:16px;color:#8b8577;width:19px}input{width:100%;height:52px;border:1px solid var(--line);border-radius:8px;padding:0 48px;font:inherit;font-size:15px;color:var(--ink);outline:none;transition:.2s;background:#f6f2e9}input:focus{border-color:var(--amber);box-shadow:0 0 0 4px rgba(216,164,113,.15);background:#fff}.toggle{position:absolute;right:13px!important;left:auto!important;top:15px!important;cursor:pointer}.options{display:flex;justify-content:space-between;align-items:center;font-size:13px;margin:3px 0 21px}.remember{display:flex;align-items:center;gap:8px;color:var(--muted)}.remember input{width:17px;height:17px;padding:0;accent-color:var(--amber)}.forgot{color:var(--deep);font-weight:700}.submit{width:100%;height:55px;border:1px solid var(--amber);border-radius:8px;background:var(--amber);color:#172020;font-family:inherit;font-weight:700;font-size:15px;letter-spacing:.02em;cursor:pointer;box-shadow:0 6px 18px rgba(216,164,113,.28);transition:transform .3s cubic-bezier(.33,1,.68,1),background .3s ease,box-shadow .3s ease}.submit:hover{transform:translateY(-2px);background:var(--amber-hover)}.submit:active{transform:translateY(0) scale(.98)}.divider{display:flex;align-items:center;gap:12px;color:#8b8577;font-size:12px;margin:21px 0}.divider:before,.divider:after{content:"";height:1px;background:var(--line);flex:1}.signup{text-align:center;font-size:14px;color:var(--muted)}.signup a{font-weight:700;color:var(--deep);text-decoration:none}
+.visual-side{background:linear-gradient(145deg,var(--night),var(--moss) 48%,var(--pine));padding:55px;display:flex;align-items:center;position:relative;overflow:hidden;color:var(--bone)}.visual-side:before,.visual-side:after{content:"";position:absolute;border:1px solid rgba(221,171,111,.14);border-radius:50%}.visual-side:before{width:700px;height:700px;right:-300px;top:-280px}.visual-side:after{width:520px;height:520px;left:-290px;bottom:-300px}
+.visual{position:relative;z-index:1;width:min(100%,590px);margin:auto}.ai-tag{display:inline-flex;align-items:center;gap:9px;background:rgba(216,164,113,.1);border:1px solid rgba(216,164,113,.22);border-radius:50px;padding:10px 15px;color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.dot{width:7px;height:7px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 5px rgba(216,164,113,.2)}.visual h2{font-family:Georgia,serif;font-weight:400;font-size:47px;letter-spacing:-.05em;line-height:1.05;margin:22px 0 13px}.visual>p{font-size:16px;line-height:1.7;color:rgba(233,228,215,.72);max-width:500px}
+.rah-card{margin-top:40px;background:rgba(233,228,215,.06);border:1px solid rgba(221,171,111,.2);border-radius:16px;padding:23px;backdrop-filter:blur(15px);box-shadow:0 20px 50px rgba(0,0,0,.25)}.rah-top{display:flex;gap:15px;align-items:center}.orb{width:67px;height:67px;border-radius:18px;background:radial-gradient(circle at 35% 25%,#f1e6d9,var(--amber) 47%,var(--deep) 78%);box-shadow:inset -10px -8px 18px rgba(23,17,10,.4);position:relative;flex:none}.orb:after{content:'••';letter-spacing:12px;position:absolute;left:17px;top:19px;color:var(--gold);font-size:17px}.rah-top h3{font-family:Georgia,serif;font-weight:400;margin:0;font-size:18px;letter-spacing:-.02em}.rah-top p{margin:5px 0 0;color:rgba(233,228,215,.7);font-size:12px}.insights{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:20px}.insight{padding:14px;border-radius:10px;background:rgba(233,228,215,.05)}.insight strong{display:block;font-family:Georgia,serif;font-size:18px}.insight span{font-size:10px;color:rgba(233,228,215,.6)}.quote{margin-top:16px;padding:15px;border-radius:10px;background:rgba(216,164,113,.08);font-size:12px;color:rgba(233,228,215,.8);line-height:1.6}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}.float1,.float2{position:absolute;border-radius:12px;background:rgba(233,228,215,.08);border:1px solid rgba(233,228,215,.14);padding:13px;backdrop-filter:blur(10px);display:flex;gap:8px;align-items:center;font-size:11px;z-index:2;animation:float 3s ease-in-out infinite;color:var(--bone)}.float1{right:30px;top:80px}.float2{left:30px;bottom:75px;animation-delay:-1.2s}.float-icon{width:35px;height:35px;border-radius:10px;background:linear-gradient(135deg,var(--amber),var(--rust));display:grid;place-items:center;color:#172020}
+@media(max-width:900px){.page{grid-template-columns:1fr}.visual-side{display:none}.login-side{padding:100px 22px 45px}.back{left:22px;top:25px}}
+@media(max-width:520px){h1{font-size:35px}.brand{width:225px;height:98px;margin-bottom:24px}.brand img{width:210px;height:90px}form{padding:21px}.roles{gap:7px}.role{font-size:11px;padding:13px 5px}.role-icon{width:39px;height:39px}.options{font-size:12px}}
+</style>
+</head>
+<body>
+<div class="page">
+<section class="login-side">
+<a class="back" href="index.html"><i data-lucide="arrow-left" size="17"></i> Back to Edurah</a>
+<div class="wrap">
+<a class="brand" href="index.html"><img src="edurah-logo.png" alt="Edurah — Solace of Education"></a>
+<h1>Welcome back! <span style="color:#ba6c45">👋</span></h1>
+<p class="intro">Choose your Edurah experience and continue your learning journey.</p>
+
+<div class="roles">
+<button type="button" class="role student active" data-role="Student"><div class="role-icon"><i data-lucide="graduation-cap" size="22"></i></div>Student</button>
+<button type="button" class="role teacher" data-role="Teacher"><div class="role-icon"><i data-lucide="presentation" size="22"></i></div>Teacher</button>
+<button type="button" class="role school" data-role="School"><div class="role-icon"><i data-lucide="school" size="22"></i></div>School</button>
+</div>
+
+<form id="loginForm">
+<label>Email Address</label>
+<div class="field"><i data-lucide="mail" size="19"></i><input type="email" placeholder="Enter your email address" required></div>
+<label>Password</label>
+<div class="field"><i data-lucide="lock-keyhole" size="19"></i><input id="password" type="password" placeholder="Enter your password" required><i id="toggle" class="toggle" data-lucide="eye" size="19"></i></div>
+<div class="options"><label class="remember"><input type="checkbox"> Remember me</label><a class="forgot" href="#">Forgot password?</a></div>
+<button class="submit" type="submit">Login to <span id="roleName">Student</span> Dashboard <i data-lucide="arrow-right" size="18" style="vertical-align:-4px;margin-left:6px"></i></button>
+<div class="divider">OR</div>
+<div class="signup">New to Edurah? <a href="#">Create your account</a></div>
+</form>
+</div>
+</section>
+
+<aside class="visual-side">
+<div class="float1"><div class="float-icon"><i data-lucide="trophy" size="17"></i></div><div><b>Achievement unlocked</b><br><span style="color:#c4cee1">Keep growing!</span></div></div>
+<div class="float2"><div class="float-icon" style="background:linear-gradient(135deg,#4ce0c3,#267edc)"><i data-lucide="trending-up" size="17"></i></div><div><b>+18% Progress</b><br><span style="color:#c4cee1">This learning journey</span></div></div>
+<div class="visual">
+<div class="ai-tag"><span class="dot"></span> YOUR CONNECTED LEARNING JOURNEY</div>
+<h2>Learn.<br><span style="background:linear-gradient(90deg,#d8a471,#dca66c,#e9e4d7);-webkit-background-clip:text;color:transparent">Connect. Grow.</span></h2>
+<p>One modern platform bringing students, teachers and schools together for a more meaningful learning experience.</p>
+<div class="rah-card">
+<div class="rah-top"><div class="orb"></div><div><h3>Meet RAH</h3><p>Your Edurah learning companion, ready to support your next step.</p></div></div>
+<div class="insights"><div class="insight"><strong>24/7</strong><span>Learning support</span></div><div class="insight"><strong>Smart</strong><span>Recommendations</span></div><div class="insight"><strong>One</strong><span>Connected journey</span></div></div>
+<div class="quote">✨ “Every learning journey begins with one step. Let's discover yours today.”</div>
+</div>
+</div>
+</aside>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="edurah-config.js"></script>
+<script>
+lucide.createIcons();
+const roles=document.querySelectorAll('.role'), roleName=document.getElementById('roleName');
+let selectedRole='student', signupMode=false;
+roles.forEach(r=>r.addEventListener('click',()=>{roles.forEach(x=>x.classList.remove('active'));r.classList.add('active');selectedRole=r.dataset.role.toLowerCase();roleName.textContent=r.dataset.role;}));
+document.getElementById('toggle').addEventListener('click',()=>{const p=document.getElementById('password');p.type=p.type==='password'?'text':'password';});
+const form=document.getElementById('loginForm');
+const submit=form.querySelector('.submit');
+const signupLink=form.querySelector('.signup a');
+function setMode(v){signupMode=v; submit.innerHTML=(v?'Create ':'Login to ')+`<span id="roleName">${selectedRole[0].toUpperCase()+selectedRole.slice(1)}</span> Dashboard <i data-lucide="arrow-right" size="18" style="vertical-align:-4px;margin-left:6px"></i>`; signupLink.textContent=v?'Already have an account? Sign in':'Create your account'; lucide.createIcons();}
+signupLink.addEventListener('click',e=>{e.preventDefault();setMode(!signupMode);});
+form.addEventListener('submit',async e=>{
+ e.preventDefault(); const email=form.querySelector('input[type=email]').value.trim(); const password=document.getElementById('password').value; const submitBtn=form.querySelector('.submit'); submitBtn.disabled=true; submitBtn.textContent='Signing in...';
+ if(!window.EDURAH_CONFIG || window.EDURAH_CONFIG.supabaseUrl.includes('YOUR-PROJECT')){alert('Edurah is not connected yet. Open setup.html and add your Supabase URL and anon key.');submitBtn.disabled=false;return;}
+ const client=window.supabase.createClient(window.EDURAH_CONFIG.supabaseUrl,window.EDURAH_CONFIG.supabaseAnonKey);
+ try{
+  let result;
+   if(signupMode){result=await client.auth.signUp({email,password,options:{data:{full_name:email.split('@')[0],role:selectedRole}}});}
+   else{result=await client.auth.signInWithPassword({email,password});}
+  if(result.error) throw result.error;
+  if(signupMode && !result.data.session){alert('Account created. Check your email if confirmation is enabled, then sign in.');setMode(false);return;}
+    const user=result.data.user; let actual=user?.user_metadata?.role||selectedRole;
+    if(user?.id){
+     const controller=new AbortController(); let timeoutId;
+     try{
+        const roleRequest=client.from('profiles').select('role').eq('id',user.id).maybeSingle().abortSignal(controller.signal);
+        const timeout=new Promise(resolve=>{timeoutId=setTimeout(()=>{controller.abort();resolve({data:null});},2500);});
+        const {data:profile}=await Promise.race([roleRequest,timeout]);
+        actual=profile?.role||actual;
+     }catch{}
+     finally{clearTimeout(timeoutId);}
+    }
+    actual=String(actual).toLowerCase();
+    location.href=actual==='teacher'?'teacher-dashboard.html':actual==='school'||actual==='admin'?'school-dashboard.html':'student-dashboard.html';
+ }catch(err){alert(err.message||'Unable to sign in.');}finally{submitBtn.disabled=false;}
+});
+</script>
+</body>
+</html>

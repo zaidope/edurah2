@@ -1,6 +1,27 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
+const prototypeRoleByPage: Record<string, 'student' | 'teacher' | 'admin'> = {
+  'student-dashboard.html': 'student',
+  'my-learning.html': 'student',
+  'rah-activity-studio.html': 'student',
+  'skill-insights.html': 'student',
+  'speaking-studio.html': 'student',
+  'edurah-passport.html': 'student',
+  'teacher-dashboard.html': 'teacher',
+  'teacher-my-classes.html': 'teacher',
+  'class-intelligence.html': 'teacher',
+  'at-risk-detection.html': 'teacher',
+  'rah-interventions.html': 'teacher',
+  'ai-activity-assignment.html': 'teacher',
+  'student-growth-reports.html': 'teacher',
+  'school-dashboard.html': 'admin',
+  'school-intelligence.html': 'admin',
+  'school-students.html': 'admin',
+  'school-teachers.html': 'admin',
+  'school-reports.html': 'admin',
+};
+
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
     request: {
@@ -34,12 +55,15 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
+  const pageAsset = pathname.startsWith('/prototypes/') ? pathname.split('/').pop() : undefined;
+  const requiredPrototypeRole = pageAsset ? prototypeRoleByPage[pageAsset] : undefined;
 
   const isProtected =
     pathname.startsWith('/admin') ||
     (pathname.startsWith('/teacher') && pathname !== '/teacher/login') ||
     pathname.startsWith('/dashboard') ||
-    pathname.startsWith('/my-learning');
+    pathname.startsWith('/my-learning') ||
+    Boolean(requiredPrototypeRole);
 
   // 1. Unauthenticated redirect to login
   if (isProtected && !user) {
@@ -63,6 +87,14 @@ export async function middleware(request: NextRequest) {
       pathname !== '/teacher/login' &&
       role !== 'teacher' &&
       role !== 'admin'
+    ) {
+      return NextResponse.redirect(new URL('/403', request.url));
+    }
+
+    if (
+      requiredPrototypeRole &&
+      role !== requiredPrototypeRole &&
+      !(requiredPrototypeRole === 'teacher' && role === 'admin')
     ) {
       return NextResponse.redirect(new URL('/403', request.url));
     }

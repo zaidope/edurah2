@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { ContentService } from '@/lib/content';
 import {
@@ -85,19 +85,36 @@ export default function TeacherGradebookPage() {
   const [cellValue, setCellValue] = useState<string>('');
   const [savingCell, setSavingCell] = useState(false);
 
-  const teacherGradeId = profile?.gradeId || 'grade-6';
+  const teacherGradeId = profile?.gradeId || '';
 
   // Load available courses for the teacher
   useEffect(() => {
-    const gradeCourses = ContentService.getCoursesByGrade(teacherGradeId);
-    setCourses(gradeCourses);
-    if (gradeCourses.length > 0 && !selectedCourseId) {
-      setSelectedCourseId(gradeCourses[0].id);
+    let active = true;
+    if (!teacherGradeId) {
+      void Promise.resolve().then(() => {
+        if (!active) return;
+        setCourses([]);
+        setSelectedCourseId('');
+        setFeedbackMsg({ type: 'error', text: 'Your account has no assigned grade. Contact an administrator.' });
+      });
+      return () => { active = false; };
     }
-  }, [teacherGradeId, selectedCourseId]);
+    void ContentService.loadCourses(teacherGradeId, 'all').then((gradeCourses) => {
+      if (!active) return;
+      setCourses(gradeCourses);
+      setSelectedCourseId((current) => gradeCourses.some((course) => course.id === current) ? current : gradeCourses[0]?.id || '');
+      setFeedbackMsg(null);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setCourses([]);
+      setSelectedCourseId('');
+      setFeedbackMsg({ type: 'error', text: error instanceof Error ? error.message : 'Could not load grade courses.' });
+    });
+    return () => { active = false; };
+  }, [teacherGradeId]);
 
   // Load gradebook matrix when course changes
-  const loadGradebook = async (courseId: string) => {
+  const loadGradebook = useCallback(async (courseId: string) => {
     if (!courseId) return;
     setLoading(true);
     try {
@@ -127,13 +144,13 @@ export default function TeacherGradebookPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (selectedCourseId) {
-      void loadGradebook(selectedCourseId);
+      void Promise.resolve().then(() => loadGradebook(selectedCourseId));
     }
-  }, [selectedCourseId]);
+  }, [selectedCourseId, loadGradebook]);
 
   // Handle cell edit save
   const handleSaveCell = async (

@@ -11,19 +11,53 @@ export default function AdminLessonsPage() {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Partial<Lesson> & { courseId?: string }>({});
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const refreshData = () => {
-    setAllData(ContentService.getAllLessons());
-    setCourses(ContentService.getCourses());
-    setQuizzes(ContentService.getQuizzes());
+  const refreshData = async () => {
+    setLoading(true);
+    setErrorMessage('');
+    try {
+      const [loadedCourses, loadedQuizzes] = await Promise.all([
+        ContentService.loadCourses(undefined, 'all'),
+        ContentService.loadQuizzes(undefined, undefined, 'all'),
+      ]);
+      setCourses(loadedCourses);
+      setQuizzes(loadedQuizzes);
+      setAllData(loadedCourses.flatMap((course) => course.chapters.flatMap((chapter) => chapter.lessons.map((lesson) => ({ lesson, course })))));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to load lessons from the database.');
+      setCourses([]);
+      setQuizzes([]);
+      setAllData([]);
+    }
+    setLoading(false);
   };
 
   useEffect(() => {
-    refreshData();
+    let active = true;
+    Promise.all([
+      ContentService.loadCourses(undefined, 'all'),
+      ContentService.loadQuizzes(undefined, undefined, 'all'),
+    ])
+      .then(([loadedCourses, loadedQuizzes]) => {
+        if (!active) return;
+        setCourses(loadedCourses);
+        setQuizzes(loadedQuizzes);
+        setAllData(loadedCourses.flatMap((course) => course.chapters.flatMap((chapter) => chapter.lessons.map((lesson) => ({ lesson, course })))));
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setErrorMessage(error instanceof Error ? error.message : 'Unable to load lessons from the database.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
   }, []);
 
   const extractYouTubeId = (input: string): string => {
-    if (!input) return 'zOjov-2OZ0E';
+    if (!input) return '';
     if (input.includes('youtube.com/watch?v=')) {
       return input.split('v=')[1]?.split('&')[0] || input;
     }
@@ -33,12 +67,27 @@ export default function AdminLessonsPage() {
     return input;
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingLesson?.title || !editingLesson?.courseId) return;
 
     const targetCourse = courses.find(c => c.id === editingLesson.courseId);
-    const targetChapterId = targetCourse?.chapters[0]?.id || `chap-default`;
+    if (!targetCourse) {
+      setErrorMessage('Select a course loaded from the database before saving a lesson.');
+      return;
+    }
+
+    const courseCopy: Course = structuredClone(targetCourse);
+    if (courseCopy.chapters.length === 0) {
+      courseCopy.chapters.push({
+        id: `${courseCopy.id}-ch-1`,
+        title: 'Module 1',
+        description: '',
+        order: 1,
+        lessons: [],
+      });
+    }
+    const chapter = courseCopy.chapters.find((item) => item.id === editingLesson.chapterId) || courseCopy.chapters[0];
 
     const vidId = extractYouTubeId(editingLesson.videoUrl || editingLesson.videoId || '');
 
@@ -50,18 +99,28 @@ export default function AdminLessonsPage() {
       duration: editingLesson.duration || '15:00',
       videoId: vidId,
       videoUrl: `https://www.youtube.com/watch?v=${vidId}`,
-      chapterId: editingLesson.chapterId || targetChapterId,
-      order: editingLesson.order || 1,
+      chapterId: chapter.id,
+      order: editingLesson.order || (chapter.lessons.length + 1),
       quizId: editingLesson.quizId || undefined,
       learningObjectives: editingLesson.learningObjectives || ['Master lesson core principles'],
       keyConcepts: editingLesson.keyConcepts || [],
       resources: editingLesson.resources || []
     };
 
-    ContentService.saveLesson(editingLesson.courseId, lessonToSave);
-    refreshData();
+    const existingIndex = chapter.lessons.findIndex((lesson) => lesson.id === lessonToSave.id);
+    if (existingIndex >= 0) chapter.lessons[existingIndex] = lessonToSave;
+    else chapter.lessons.push(lessonToSave);
+    chapter.lessons.sort((left, right) => left.order - right.order);
+    courseCopy.lessonCount = courseCopy.chapters.reduce((total, item) => total + item.lessons.length, 0);
+
+    const result = await ContentService.saveCourse(courseCopy);
+    if (!result.success) {
+      setErrorMessage(result.error || 'Unable to save lesson.');
+      return;
+    }
     setIsModalOpen(false);
     setEditingLesson({});
+    await refreshData();
   };
 
   return (
@@ -77,21 +136,25 @@ export default function AdminLessonsPage() {
         </div>
 
         <button
+          disabled={loading || courses.length === 0}
           onClick={() => {
             setEditingLesson({
               title: '',
               courseId: courses[0]?.id || '',
               duration: '15:00',
-              videoUrl: 'https://www.youtube.com/watch?v=zOjov-2OZ0E',
+              videoUrl: '',
               description: ''
             });
             setIsModalOpen(true);
           }}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium shadow-xs cursor-pointer"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus className="w-4 h-4 text-white" /> Add Video Lesson
         </button>
       </div>
+
+      {errorMessage && <div role="alert" className="border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900">{errorMessage}</div>}
+      {loading && <p className="text-xs text-slate-500">Loading lessons from the database…</p>}
 
       {/* LESSONS TABLE */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
@@ -108,7 +171,9 @@ export default function AdminLessonsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {allData.map(({ lesson, course }) => (
+              {!loading && !errorMessage && allData.length === 0 ? (
+                <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">No lessons are recorded for the published or draft courses.</td></tr>
+              ) : allData.map(({ lesson, course }) => (
                 <tr key={lesson.id} className="hover:bg-slate-50 transition-colors">
                   <td className="p-4 font-semibold text-slate-900">
                     <div>{lesson.title}</div>
@@ -164,6 +229,7 @@ export default function AdminLessonsPage() {
                 <label className="font-semibold text-slate-700">Target Course</label>
                 <select
                   value={editingLesson?.courseId || ''}
+                  disabled={Boolean(editingLesson?.id)}
                   onChange={e => setEditingLesson({ ...editingLesson, courseId: e.target.value })}
                   className="w-full px-3.5 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 focus:outline-none focus:border-blue-600"
                 >
@@ -193,7 +259,7 @@ export default function AdminLessonsPage() {
                     required
                     value={editingLesson?.videoUrl || editingLesson?.videoId || ''}
                     onChange={e => setEditingLesson({ ...editingLesson, videoUrl: e.target.value })}
-                    placeholder="https://www.youtube.com/watch?v=zOjov-2OZ0E"
+                    placeholder="https://www.youtube.com/watch?v=..."
                     className="w-full px-3.5 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-[11px]"
                   />
                 </div>

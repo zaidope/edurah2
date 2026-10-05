@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ContentService } from '@/lib/content';
 import { AuthService } from '@/lib/auth';
+import { Course, Quiz, UserProfile } from '@/types';
 import { 
   Users, 
   GraduationCap,
@@ -18,22 +19,35 @@ import {
 } from 'lucide-react';
 
 export default function AdminDashboardPage() {
-  const grades = ContentService.getGrades();
-  const [students, setStudents] = useState<any[]>([]);
-  const [teachers, setTeachers] = useState<any[]>([]);
-  const [courses, setCourses] = useState<any[]>([]);
-  const [quizzes, setQuizzes] = useState<any[]>([]);
+  const [students, setStudents] = useState<UserProfile[]>([]);
+  const [teachers, setTeachers] = useState<UserProfile[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
-    async function loadData() {
-      const studentData = await AuthService.getStudents();
-      const teacherData = await AuthService.getTeachers();
-      setStudents(studentData);
-      setTeachers(teacherData);
-      setCourses(ContentService.getCourses());
-      setQuizzes(ContentService.getQuizzes());
-    }
-    loadData();
+    let active = true;
+    Promise.all([
+      AuthService.getStudents(),
+      AuthService.getTeachers(),
+      ContentService.loadCourses(undefined, 'published'),
+      ContentService.loadQuizzes(undefined, undefined, 'published'),
+    ])
+      .then(([studentData, teacherData, courseData, quizData]) => {
+        if (!active) return;
+        setStudents(studentData);
+        setTeachers(teacherData);
+        setCourses(courseData);
+        setQuizzes(quizData);
+      })
+      .catch((error: unknown) => {
+        if (active) setLoadError(error instanceof Error ? error.message : 'Unable to load administration metrics.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
   }, []);
 
   const activeStudentsCount = students.filter(s => s.isActive).length;
@@ -41,6 +55,8 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
+      {loadError && <div role="alert" className="border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900">{loadError}</div>}
+      {loading && <p className="text-xs text-[#6f6b63]">Loading institutional metrics…</p>}
       
       {/* HEADER */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#d8d0c2] pb-6">

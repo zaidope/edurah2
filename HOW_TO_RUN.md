@@ -22,6 +22,16 @@ The project uses Supabase for the database and authentication.
 2. Open `.env.local` and fill in your Supabase credentials:
    - `NEXT_PUBLIC_SUPABASE_URL`: Your Supabase project URL.
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Your Supabase anon (public) key.
+
+To enable the RAH learning companion, also add these server-only OpenAI settings:
+
+```env
+OPENAI_API_KEY=your-openai-api-key
+OPENAI_MODEL=gpt-6-luna
+OPENAI_TRANSCRIBE_MODEL=gpt-4o-mini-transcribe
+```
+
+Use the exact model ID enabled for your OpenAI API project if it differs from `gpt-6-luna`. The text coach uses the OpenAI Responses API; speech feedback uses the Audio Transcriptions API and then the configured text model. Never use a `NEXT_PUBLIC_` prefix for the API key.
    
 *(Note: If you don't configure these, the app will gracefully fall back to local mock data so you can still preview the UI.)*
 

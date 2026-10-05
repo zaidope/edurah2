@@ -34,23 +34,36 @@ export async function GET(req: NextRequest) {
 
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('role, grade_id')
+      .select('role, grade_id, is_active')
       .eq('id', user.id)
       .maybeSingle();
 
-    const role = profile?.role || user.user_metadata?.role;
+    const role = profile?.role;
     if (role !== 'teacher' && role !== 'admin') {
       return NextResponse.json(
         { data: null, error: { code: 'FORBIDDEN', message: 'Faculty privileges required' } },
         { status: 403 }
       );
     }
+    if (!profile?.is_active) {
+      return NextResponse.json(
+        { data: null, error: { code: 'FORBIDDEN', message: 'An active faculty profile is required' } },
+        { status: 403 }
+      );
+    }
 
     const url = new URL(req.url);
     const courseId = url.searchParams.get('courseId') || undefined;
-    const gradeId = url.searchParams.get('gradeId') || profile?.grade_id || undefined;
+    const requestedGrade = url.searchParams.get('gradeId') || undefined;
+    const gradeId = role === 'admin' ? requestedGrade : profile.grade_id || undefined;
+    if (role === 'teacher' && !gradeId) {
+      return NextResponse.json(
+        { data: null, error: { code: 'FORBIDDEN', message: 'Assign a grade to this teacher profile first' } },
+        { status: 403 }
+      );
+    }
 
-    const analytics = GradebookService.getTopicMasteryAnalytics(courseId, gradeId);
+    const analytics = await GradebookService.getTopicMasteryAnalytics(courseId, gradeId);
 
     return NextResponse.json({
       data: analytics,

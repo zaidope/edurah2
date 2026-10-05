@@ -371,162 +371,148 @@ export const GradebookService = {
   },
 
   // ==========================================================================
-  // 6. AT-RISK STUDENT DETECTION (Task 4.4)
-  // Flags students with no activity in 7 days, failing average, or >= 2 missing
+  // 6. AT-RISK STUDENT DETECTION
+  // Uses recorded lesson activity and quiz results; unavailable data is not synthesized.
   // ==========================================================================
   async detectAtRiskStudents(courseId?: string, gradeId?: string): Promise<AtRiskStudent[]> {
-    let allStudents: any[] = [];
-    try {
-      const supabaseAdmin = getSupabaseAdmin();
-      let query = supabaseAdmin.from('profiles').select('*').eq('role', 'student');
-      if (gradeId) {
-        query = query.eq('grade_id', gradeId);
-      }
-      const { data: dbStudents } = await query;
-      if (dbStudents && dbStudents.length > 0) {
-        allStudents = dbStudents.map((s: any) => ({
-          id: s.id,
-          fullName: s.full_name,
-          email: s.email,
-          gradeId: s.grade_id,
-          createdAt: s.created_at,
-        }));
-      }
-    } catch {
-      // Fallback
+    const supabaseAdmin = getSupabaseAdmin();
+    let studentQuery = supabaseAdmin.from('profiles')
+      .select('id,full_name,email,grade_id,created_at')
+      .eq('role', 'student')
+      .eq('is_active', true);
+    if (gradeId) studentQuery = studentQuery.eq('grade_id', gradeId);
+    const { data: students, error: studentError } = await studentQuery.limit(1000);
+    if (studentError) throw studentError;
+    if (!students?.length) return [];
+
+    const studentIds = students.map((student) => student.id);
+    let progressQuery = supabaseAdmin.from('lesson_progress')
+      .select('user_id,last_accessed_at,course_id')
+      .in('user_id', studentIds);
+    let resultsQuery = supabaseAdmin.from('quiz_results')
+      .select('user_id,course_id,percentage,completed_at')
+      .in('user_id', studentIds);
+    if (courseId) {
+      progressQuery = progressQuery.eq('course_id', courseId);
+      resultsQuery = resultsQuery.eq('course_id', courseId);
     }
+    const [progressResponse, resultsResponse] = await Promise.all([progressQuery, resultsQuery]);
+    if (progressResponse.error) throw progressResponse.error;
+    if (resultsResponse.error) throw resultsResponse.error;
 
-    if (allStudents.length === 0) {
-      if (gradeId) {
-        allStudents = await AuthService.getStudentsByGrade(gradeId);
-      } else {
-        allStudents = await AuthService.getStudents();
+    const sevenDaysAgo = Date.now() - 7 * 86400000;
+    const atRisk: AtRiskStudent[] = [];
+    for (const student of students) {
+      const studentProgress = (progressResponse.data || []).filter((row) => row.user_id === student.id);
+      const studentResults = (resultsResponse.data || []).filter((row) => row.user_id === student.id);
+      const activityTimes = [
+        ...studentProgress.map((row) => row.last_accessed_at),
+        ...studentResults.map((row) => row.completed_at),
+      ].filter(Boolean).map((value) => new Date(value as string).getTime());
+      const lastActive = activityTimes.length ? Math.max(...activityTimes) : new Date(student.created_at).getTime();
+      const reasons: AtRiskStudent['reasons'] = [];
+      const reasonDetails: string[] = [];
+      const averageQuizScore = studentResults.length
+        ? Math.round(studentResults.reduce((sum, result) => sum + Number(result.percentage || 0), 0) / studentResults.length)
+        : undefined;
+
+      if (averageQuizScore !== undefined && averageQuizScore < 60) {
+        reasons.push('low_quiz_average');
+        reasonDetails.push(`Average recorded quiz score: ${averageQuizScore}%`);
       }
-    }
-
-    const courses = courseId
-      ? [ContentService.getCourseById(courseId)].filter(Boolean) as Course[]
-      : ContentService.getCourses();
-
-    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
-    const atRiskList: AtRiskStudent[] = [];
-
-    for (const student of allStudents) {
-      // Find relevant courses for student
-      const studentCourses = courses.filter((c: Course) => !student.gradeId || c.gradeId === student.gradeId);
-
-      for (const course of studentCourses) {
-        const gradeCalc = this.calculateStudentCourseGrade(student.id, course.id);
-        const reasons: ('no_activity_7_days' | 'failing_weighted_average' | 'two_or_more_missing_assignments')[] = [];
-        const reasonDetails: string[] = [];
-
-        // 1. Check failing weighted average (< 60% or not passing)
-        if (!gradeCalc.isPassing || gradeCalc.weightedPercentage < 60) {
-          reasons.push('failing_weighted_average');
-          reasonDetails.push(`Failing weighted score: ${gradeCalc.weightedPercentage}% (${gradeCalc.letterGrade})`);
-        }
-
-        // 2. Check >= 2 missing assignments
-        if (gradeCalc.missingCount >= 2) {
-          reasons.push('two_or_more_missing_assignments');
-          reasonDetails.push(`${gradeCalc.missingCount} missing assignments past due date`);
-        }
-
-        // 3. Check no activity in 7 days
-        const submissions = AssignmentsRepository.getSubmissionsByStudent(student.id);
-        const latestSubmission = submissions.sort(
-          (a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime()
-        )[0];
-
-        const lastActivityDate = latestSubmission?.submittedAt
-          ? new Date(latestSubmission.submittedAt)
-          : student.createdAt
-          ? new Date(student.createdAt)
-          : undefined;
-
-        if (lastActivityDate && lastActivityDate < sevenDaysAgo) {
-          reasons.push('no_activity_7_days');
-          const daysInactive = Math.floor((Date.now() - lastActivityDate.getTime()) / 86400000);
-          reasonDetails.push(`Zero recorded activity in past ${daysInactive} days`);
-        }
-
-        if (reasons.length > 0) {
-          atRiskList.push({
-            studentId: student.id,
-            studentName: student.fullName || 'Student',
-            studentEmail: student.email || '',
-            gradeId: student.gradeId,
-            courseId: course.id,
-            courseTitle: course.title,
-            reasons,
-            reasonDetails,
-            lastActiveAt: lastActivityDate?.toISOString(),
-            weightedAverage: gradeCalc.weightedPercentage,
-            letterGrade: gradeCalc.letterGrade,
-            missingCount: gradeCalc.missingCount,
-            riskLevel: reasons.includes('failing_weighted_average') || gradeCalc.missingCount >= 2 ? 'high' : 'medium',
-          });
-        }
+      if (lastActive < sevenDaysAgo) {
+        reasons.push('no_activity_7_days');
+        reasonDetails.push(`No recorded lesson or quiz activity for ${Math.floor((Date.now() - lastActive) / 86400000)} days`);
       }
-    }
+      if (!reasons.length) continue;
 
-    return atRiskList;
+      atRisk.push({
+        studentId: student.id,
+        studentName: student.full_name || 'Student',
+        studentEmail: student.email || '',
+        gradeId: student.grade_id || undefined,
+        reasons,
+        reasonDetails,
+        lastActiveAt: Number.isFinite(lastActive) ? new Date(lastActive).toISOString() : undefined,
+        averageQuizScore,
+        missingCount: 0,
+        riskLevel: reasons.includes('low_quiz_average') ? 'high' : 'medium',
+      });
+    }
+    return atRisk;
   },
 
   // ==========================================================================
   // 7. OUTCOME & TOPIC MASTERY ANALYTICS (Task 4.5)
   // Aggregates accuracy per topic per cohort and renders weakest 5 topics
   // ==========================================================================
-  getTopicMasteryAnalytics(courseId?: string, gradeId?: string): {
+  async getTopicMasteryAnalytics(courseId?: string, gradeId?: string): Promise<{
     topics: TopicMastery[];
     weakestTopics: TopicMastery[];
-  } {
-    const allQuizzes = ContentService.getQuizzes();
-    const filteredQuizzes = allQuizzes.filter((q: Quiz) => {
-      if (courseId && q.courseId !== courseId) return false;
-      if (gradeId && q.gradeId !== gradeId) return false;
-      return true;
-    });
+  }> {
+    const supabaseAdmin = getSupabaseAdmin();
+    let studentQuery = supabaseAdmin.from('profiles').select('id,grade_id').eq('role', 'student').eq('is_active', true);
+    if (gradeId) studentQuery = studentQuery.eq('grade_id', gradeId);
+    const { data: students, error: studentError } = await studentQuery.limit(1000);
+    if (studentError) throw studentError;
+    if (!students?.length) return { topics: [], weakestTopics: [] };
 
-    const topicStats: Record<string, { total: number; correct: number; courseId: string; gradeId: string }> = {};
+    let resultsQuery = supabaseAdmin.from('quiz_results')
+      .select('user_id,quiz_id,quiz_name,course_id,percentage,correct_answers,total_questions,question_results')
+      .in('user_id', students.map((student) => student.id));
+    if (courseId) resultsQuery = resultsQuery.eq('course_id', courseId);
+    const { data: results, error: resultsError } = await resultsQuery;
+    if (resultsError) throw resultsError;
 
-    // Sample question topic tagging dictionary
-    const topicDefaults: Record<string, string> = {
-      'quiz-g1-1': 'Basic Arithmetic & Counting',
-      'quiz-g2-1': 'Plant Biology & Ecosystems',
-      'quiz-g3-1': 'Earth Cycles & Geography',
-      'quiz-g4-1': 'Solar System & Planetary Orbits',
-      'quiz-g5-1': 'Matter, Atoms & Physical Chemistry',
-      'quiz-g6-1': 'Plate Tectonics & Seismic Faults',
-    };
+    const courseIds = [...new Set((results || []).map((result) => result.course_id).filter(Boolean))];
+    const { data: courses, error: coursesError } = courseIds.length
+      ? await supabaseAdmin.from('courses').select('id,title').in('id', courseIds)
+      : { data: [], error: null };
+    if (coursesError) throw coursesError;
+    const courseTitles = new Map((courses || []).map((course) => [course.id, course.title]));
+    const topicStats = new Map<string, { total: number; correct: number; courseId: string; gradeId?: string; title: string }>();
 
-    for (const quiz of filteredQuizzes) {
-      const fallbackTopic = topicDefaults[quiz.id] || quiz.title.replace(/^Grade \d+:\s*/, '');
-
-      for (const question of quiz.questions) {
-        const topic = question.topic || fallbackTopic;
-        if (!topicStats[topic]) {
-          topicStats[topic] = {
+    for (const result of results || []) {
+      const studentGrade = students.find((student) => student.id === result.user_id)?.grade_id || undefined;
+      const courseKey = result.course_id || 'unassigned';
+      const questions = Array.isArray(result.question_results) ? result.question_results : [];
+      if (questions.length) {
+        for (const question of questions) {
+          const topic = String(question.topic || question.questionText || result.quiz_name || result.quiz_id).slice(0, 160);
+          const key = `${courseKey}:${result.quiz_id}:${question.questionId || topic}`;
+          const stats = topicStats.get(key) || {
             total: 0,
             correct: 0,
-            courseId: quiz.courseId || 'course-core',
-            gradeId: quiz.gradeId,
+            courseId: courseKey,
+            gradeId: studentGrade,
+            title: topic,
           };
+          stats.total += 1;
+          if (question.isCorrect === true) stats.correct += 1;
+          topicStats.set(key, stats);
         }
-
-        // Aggregate stats (simulated + actual recorded attempts)
-        const sampleAttempts = 12 + Math.floor(Math.random() * 8);
-        const sampleCorrect = Math.floor(sampleAttempts * (0.55 + Math.random() * 0.4));
-        topicStats[topic].total += sampleAttempts;
-        topicStats[topic].correct += sampleCorrect;
+      } else {
+        const topic = String(result.quiz_name || result.quiz_id).slice(0, 160);
+        const key = `${courseKey}:${result.quiz_id}`;
+        const stats = topicStats.get(key) || {
+          total: 0,
+          correct: 0,
+          courseId: courseKey,
+          gradeId: studentGrade,
+          title: topic,
+        };
+        stats.total += Number(result.total_questions) || 0;
+        stats.correct += Number(result.correct_answers) || 0;
+        topicStats.set(key, stats);
       }
     }
 
-    const topics: TopicMastery[] = Object.entries(topicStats).map(([topic, stats]) => {
+    const topics: TopicMastery[] = [...topicStats.values()].filter((stats) => stats.total > 0).map((stats) => {
       const accuracy = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 100;
       return {
-        topic,
+        topic: stats.title,
         courseId: stats.courseId,
+        courseTitle: courseTitles.get(stats.courseId),
         gradeId: stats.gradeId,
         totalAttempts: stats.total,
         correctAnswers: stats.correct,

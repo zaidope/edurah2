@@ -6,7 +6,7 @@ import QuizMakerComponent from '@/components/quizMaker/QuizMakerComponent';
 
 export default function TeacherQuizMakerPage() {
   const { profile } = useAuth();
-  const teacherGradeId = profile?.gradeId || 'grade-1';
+  const teacherGradeId = profile?.gradeId;
 
   return (
     <div className="py-2">

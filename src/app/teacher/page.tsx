@@ -6,8 +6,8 @@ import { useAuth } from '@/context/AuthContext';
 import { ContentService } from '@/lib/content';
 import { AuthService } from '@/lib/auth';
 import { UserProfile, Course, Quiz, AtRiskStudent, TopicMastery } from '@/types';
+import { supabase } from '@/lib/supabase/client';
 import {
-  GraduationCap,
   BookOpen,
   Users,
   Award,
@@ -16,12 +16,10 @@ import {
   AlertTriangle,
   ArrowRight,
   Sparkles,
-  ChevronRight,
   Table,
   TrendingDown,
   Clock,
   FileX,
-  Target
 } from 'lucide-react';
 
 export default function TeacherDashboardPage() {
@@ -31,27 +29,36 @@ export default function TeacherDashboardPage() {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [atRiskList, setAtRiskList] = useState<AtRiskStudent[]>([]);
   const [weakestTopics, setWeakestTopics] = useState<TopicMastery[]>([]);
+  const [recommendations, setRecommendations] = useState<Array<{ id: string; title: string; reason: string; priority: number; status: string }>>([]);
+  const [recommendationBusy, setRecommendationBusy] = useState(false);
+  const [recommendationError, setRecommendationError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
-  const teacherGradeId = profile?.gradeId || 'grade-1';
+  const teacherGradeId = profile?.gradeId || '';
   const gradeObj = ContentService.getGradeById(teacherGradeId);
 
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || !profile) return;
+    let active = true;
     async function loadData() {
       setLoading(true);
+      setLoadError('');
       try {
+        if (!teacherGradeId) throw new Error('Your account has no assigned grade. Contact an administrator.');
         const gradeStudents = await AuthService.getStudentsByGrade(teacherGradeId);
-        const gradeCourses = ContentService.getCoursesByGrade(teacherGradeId);
-        const gradeQuizzes = ContentService.getQuizzesByGrade(teacherGradeId);
+        const [gradeCourses, gradeQuizzes] = await Promise.all([
+          ContentService.loadCourses(teacherGradeId, 'published'),
+          ContentService.loadQuizzes(teacherGradeId, undefined, 'published'),
+        ]);
 
+        if (!active) return;
         setStudents(gradeStudents);
         setCourses(gradeCourses);
         setQuizzes(gradeQuizzes);
 
         // Fetch at-risk students and topic mastery
-        const token = (await import('@/lib/supabase/client')).getSupabaseBrowserClient();
-        const { data: sessionData } = await token.auth.getSession();
+        const { data: sessionData } = await supabase.auth.getSession();
         const accessToken = sessionData?.session?.access_token;
 
         if (accessToken) {
@@ -71,14 +78,46 @@ export default function TeacherDashboardPage() {
             setWeakestTopics(json.data?.weakestTopics || []);
           }
         }
-      } catch (err) {
-        console.error('Failed to load teacher dashboard analytics:', err);
+        const { data: savedRecommendations, error: recommendationLoadError } = await supabase.from('rah_recommendations')
+          .select('id,title,reason,priority,status')
+          .eq('teacher_id', profile?.id || '')
+          .order('created_at', { ascending: false })
+          .limit(20);
+        if (recommendationLoadError) setRecommendationError('RAH interventions are unavailable. Apply the RAH learning migration first.');
+        else setRecommendations(savedRecommendations || []);
+      } catch (error: unknown) {
+        if (active) setLoadError(error instanceof Error ? error.message : 'Failed to load teacher dashboard data.');
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
-    loadData();
-  }, [teacherGradeId, authLoading]);
+    void Promise.resolve().then(loadData);
+    return () => { active = false; };
+  }, [teacherGradeId, authLoading, profile]);
+
+  async function generateInterventions() {
+    setRecommendationBusy(true);
+    setRecommendationError('');
+    try {
+      const { data, error } = await supabase.functions.invoke('rah-lms', { body: { mode: 'teacher_analysis' } });
+      if (error) throw new Error(error.message || 'RAH analysis is unavailable.');
+      if (data?.error) throw new Error(data.error);
+      setRecommendations(data.recommendations || []);
+    } catch (requestError) {
+      setRecommendationError(requestError instanceof Error ? requestError.message : 'Could not generate interventions.');
+    } finally {
+      setRecommendationBusy(false);
+    }
+  }
+
+  async function updateIntervention(id: string, status: 'acted' | 'dismissed') {
+    const { error } = await supabase.from('rah_recommendations').update({ status }).eq('id', id).eq('teacher_id', profile?.id || '');
+    if (error) {
+      setRecommendationError('Could not save the intervention status.');
+      return;
+    }
+    setRecommendations((current) => current.map((item) => item.id === id ? { ...item, status } : item));
+  }
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto pb-16">
@@ -113,6 +152,9 @@ export default function TeacherDashboardPage() {
           </Link>
         </div>
       </div>
+
+      {loadError && <div role="alert" className="border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900">{loadError}</div>}
+      {loading && <p className="text-xs text-[#706b63]">Loading production cohort data…</p>}
 
       {/* METRIC CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
@@ -196,7 +238,7 @@ export default function TeacherDashboardPage() {
             <CheckCircle2 className="w-6 h-6 text-[#2e7d32] mx-auto mb-1" />
             <p className="font-bold">Cohort in Excellent Standing</p>
             <p className="text-[11px] text-[#555048]">
-              No students are currently flagged for inactivity, failing weighted grades, or missing work.
+              No students are currently flagged for inactivity or low recorded quiz scores.
             </p>
           </div>
         ) : (
@@ -260,24 +302,50 @@ export default function TeacherDashboardPage() {
         )}
       </div>
 
-      {/* OUTCOME ANALYTICS & WEAKEST TOPICS (Task 4.5) */}
+      <section className="space-y-4 border border-[#d8d0c2] bg-white p-5 sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#e8e2d5] pb-4">
+          <div>
+            <p className="edurah-eyebrow"><span /> RAH CLASS INTERVENTIONS</p>
+            <h2 className="mt-2 font-serif-heading text-xl font-normal">Evidence-based next steps</h2>
+            <p className="mt-1 text-xs text-[#706b63]">Suggestions are based on recorded cohort lessons, quizzes, and RAH skill practice.</p>
+          </div>
+          <button onClick={generateInterventions} disabled={recommendationBusy} className="inline-flex items-center gap-2 rounded-lg bg-[#1e2e30] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">
+            <Sparkles className="h-4 w-4" /> {recommendationBusy ? 'Analysing saved evidence…' : 'Generate interventions'}
+          </button>
+        </div>
+        {recommendationError && <p role="alert" className="text-xs text-rose-800">{recommendationError}</p>}
+        {recommendations.length ? <div className="divide-y divide-[#e8e2d5]">
+          {recommendations.map((item) => <article key={item.id} className="flex flex-wrap items-start justify-between gap-3 py-4">
+            <div className="max-w-3xl">
+              <div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-bold">{item.title}</h3><span className="text-[10px] font-bold uppercase text-[#81512f]">Priority {item.priority}</span><span className="text-[10px] capitalize text-[#706b63]">{item.status}</span></div>
+              <p className="mt-1 text-xs leading-relaxed text-[#555048]">{item.reason}</p>
+            </div>
+            {item.status === 'new' && <div className="flex gap-2">
+              <button onClick={() => void updateIntervention(item.id, 'acted')} className="rounded-md border border-[#d8d0c2] px-3 py-2 text-xs font-bold text-[#81512f]">Mark acted</button>
+              <button onClick={() => void updateIntervention(item.id, 'dismissed')} className="rounded-md px-3 py-2 text-xs font-semibold text-[#706b63]">Dismiss</button>
+            </div>}
+          </article>)}
+        </div> : <p className="py-3 text-xs text-[#706b63]">No intervention records yet. Generate suggestions after your cohort has saved learning activity.</p>}
+      </section>
+
+      {/* RECORDED QUIZ AND QUESTION OUTCOMES */}
       <div className="bg-white border border-[#d8d0c2] p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#e8e2d5] pb-3 gap-2">
           <div>
             <p className="edurah-eyebrow">
-              <span /> Curriculum Mastery Outcomes
+              <span /> Recorded Assessment Outcomes
             </p>
             <h2 className="font-serif-heading text-xl font-normal text-[#171819]">
-              Cohort Topic Mastery & Weakest Focus Areas
+              Cohort Quiz and Question Accuracy
             </h2>
           </div>
           <span className="text-[11px] text-[#706b63]">
-            Aggregated question accuracy across student assessment attempts
+            Aggregated accuracy from saved student assessment attempts
           </span>
         </div>
 
         {weakestTopics.length === 0 ? (
-          <p className="text-xs text-[#706b63] italic">No topic outcome statistics recorded yet.</p>
+          <p className="text-xs text-[#706b63] italic">No assessment outcome statistics recorded yet.</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
             {weakestTopics.map((top, idx) => (
@@ -288,7 +356,7 @@ export default function TeacherDashboardPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="space-y-0.5">
                     <span className="text-[10px] font-mono-code uppercase font-bold text-[#81512f]">
-                      Topic Focus #{idx + 1}
+                      Assessment Focus #{idx + 1}
                     </span>
                     <h3 className="font-bold text-xs text-[#171819] line-clamp-1" title={top.topic}>
                       {top.topic}
@@ -316,7 +384,7 @@ export default function TeacherDashboardPage() {
                   </div>
                   <div className="flex items-center justify-between text-[10px] text-[#706b63] font-mono-code">
                     <span>{top.correctAnswers} / {top.totalAttempts} correct answers</span>
-                    <span>{top.accuracyPercent < 70 ? 'Review Needed' : 'Solid Mastery'}</span>
+                    <span>{top.accuracyPercent < 70 ? 'Review Needed' : 'Strong Results'}</span>
                   </div>
                 </div>
               </div>

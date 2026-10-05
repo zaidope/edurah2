@@ -6,84 +6,84 @@ import { useAuth } from '@/context/AuthContext';
 import { ContentService } from '@/lib/content';
 import { ProgressService } from '@/lib/progress';
 import CourseCard from '@/components/course/CourseCard';
-import { BookOpen, Award, Sparkles, ArrowRight, FolderCheck, ShieldCheck, Download, ExternalLink } from 'lucide-react';
+import { Assignment, AssignmentSubmission, Certificate, Course, Quiz } from '@/types';
+import { BookOpen, Award, ArrowRight, FolderCheck, ShieldCheck, ExternalLink } from 'lucide-react';
 import PageTransition from '@/components/layout/PageTransition';
 import AnimatedPage from '@/components/layout/AnimatedPage';
 
 export default function MyLearningPage() {
   const { profile } = useAuth();
   const [progress, setProgress] = useState(ProgressService.getProgress());
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [assignmentsList, setAssignmentsList] = useState<any[]>([]);
-  const [studentSubmissions, setStudentSubmissions] = useState<any[]>([]);
-  const [certificates, setCertificates] = useState<any[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [loadError, setLoadError] = useState('');
+  const [assignmentsList, setAssignmentsList] = useState<Assignment[]>([]);
+  const [studentSubmissions, setStudentSubmissions] = useState<AssignmentSubmission[]>([]);
+  const [certificates, setCertificates] = useState<Certificate[]>([]);
 
   useEffect(() => {
-    setProgress(ProgressService.getProgress());
-
-    // Sync live from server
-    async function syncServerProgress() {
-      if (!profile?.id) return;
+    const profileId = profile?.id;
+    const profileRole = profile?.role;
+    const assignedGradeId = profile?.gradeId;
+    if (!profileId) return;
+    let active = true;
+    async function loadStudentData() {
       try {
+        const gradeId = profileRole === 'student' ? assignedGradeId : undefined;
+        if (profileRole === 'student' && !gradeId) {
+          throw new Error('Your account has no assigned grade. Contact an administrator.');
+        }
+        const [courseData, quizData, syncedProgress] = await Promise.all([
+          ContentService.loadCourses(gradeId, 'published'),
+          ContentService.loadQuizzes(gradeId, undefined, 'published'),
+          ProgressService.syncFromSupabase(profileId),
+        ]);
+        if (!active) return;
+        setCourses(courseData);
+        setQuizzes(quizData);
+        setProgress(syncedProgress);
+
         const { data: { session } } = await import('@/lib/supabase/client').then(m => m.supabase.auth.getSession());
         if (session?.access_token) {
-          const res = await fetch('/api/progress/user', {
-            headers: { Authorization: `Bearer ${session.access_token}` }
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.success && (data.quizResults || data.quizResultsMap)) {
-              // Merge into progress service safely whether returned as array or map
-              const resultsList = Array.isArray(data.quizResults)
-                ? data.quizResults
-                : Object.values(data.quizResults || data.quizResultsMap || {});
-              resultsList.forEach((qr: any) => {
-                ProgressService.saveQuizResult(qr);
-              });
-              setProgress(ProgressService.getProgress());
-            }
-          }
-
-          // Fetch assignments
           const asgRes = await fetch('/api/assignments', {
             headers: { Authorization: `Bearer ${session.access_token}` }
           });
           if (asgRes.ok) {
             const asgData = await asgRes.json();
-            setAssignmentsList(asgData.data?.assignments || []);
-            setStudentSubmissions(asgData.data?.submissions || []);
+            if (active) {
+              setAssignmentsList(asgData.data?.assignments || []);
+              setStudentSubmissions(asgData.data?.submissions || []);
+            }
           }
 
-          // Fetch student certificates
           const certRes = await fetch('/api/certificates/student', {
             headers: { Authorization: `Bearer ${session.access_token}` },
           });
           if (certRes.ok) {
             const certData = await certRes.json();
-            setCertificates(certData.data?.certificates || []);
+            if (active) setCertificates(certData.data?.certificates || []);
           }
         }
-      } catch (err) {
-        console.error('Failed to sync progress:', err);
+      } catch (error: unknown) {
+        if (active) setLoadError(error instanceof Error ? error.message : 'Unable to load learning data.');
       }
     }
 
-    syncServerProgress();
-  }, [profile?.id]);
+    void loadStudentData();
+    return () => { active = false; };
+  }, [profile]);
 
-  // Enforce grade isolation: if student, only show courses and quizzes matching their assigned grade
-  const allCourses = ContentService.getCourses();
   const studentGradeId = profile?.gradeId;
   const gradeObj = studentGradeId ? ContentService.getGradeById(studentGradeId) : null;
 
   const visibleCourses = profile?.role === 'student' && studentGradeId
-    ? allCourses.filter(c => c.gradeId === studentGradeId)
-    : allCourses;
+    ? courses.filter(course => course.gradeId === studentGradeId)
+    : profile?.role === 'student' ? [] : courses;
 
   // Filter quiz results strictly to student's assigned grade
   const allQuizResults = Object.values(progress.quizResults);
   const quizResultsList = allQuizResults.filter(res => {
-    const quizObj = ContentService.getQuizById(res.quizId);
+    const quizObj = quizzes.find(quiz => quiz.id === res.quizId);
     if (!quizObj) return false;
     if (profile?.role === 'student' && studentGradeId) {
       return quizObj.gradeId === studentGradeId;
@@ -109,6 +109,8 @@ export default function MyLearningPage() {
               Track your enrolled course modules, syllabus completions, and assessment milestones.
             </p>
           </div>
+
+          {loadError && <div role="alert" className="border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900">{loadError}</div>}
 
           {/* COURSES IN PROGRESS */}
           <section className="space-y-6">
@@ -182,7 +184,7 @@ export default function MyLearningPage() {
                     </thead>
                     <tbody className="divide-y divide-[#e5ded0]">
                       {quizResultsList.map((res, idx) => {
-                        const quizObj = ContentService.getQuizById(res.quizId);
+                        const quizObj = quizzes.find(quiz => quiz.id === res.quizId);
                         const formatTime = (secs?: number) => {
                           if (!secs || secs <= 0) return '—';
                           const m = Math.floor(secs / 60);

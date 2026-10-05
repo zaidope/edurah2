@@ -1,0 +1,11 @@
+[functions.rah-chat]
+verify_jwt = true
+
+[functions.rah-intelligence]
+verify_jwt = true
+
+[functions.rah-speech]
+verify_jwt = true
+
+[functions.rah-lms]
+verify_jwt = true

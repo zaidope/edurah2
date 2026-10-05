@@ -10,16 +10,36 @@ export default function AdminQuizzesPage() {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingQuiz, setEditingQuiz] = useState<Partial<Quiz>>({});
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const refreshData = () => {
-    setQuizzes(ContentService.getQuizzes());
+  const refreshData = async () => {
+    setLoading(true);
+    setErrorMessage('');
+    try {
+      setQuizzes(await ContentService.loadQuizzes(undefined, undefined, 'all'));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to load quizzes from the database.');
+    }
+    setLoading(false);
   };
 
   useEffect(() => {
-    refreshData();
+    let active = true;
+    ContentService.loadQuizzes(undefined, undefined, 'all')
+      .then((loadedQuizzes) => {
+        if (active) setQuizzes(loadedQuizzes);
+      })
+      .catch((error: unknown) => {
+        if (active) setErrorMessage(error instanceof Error ? error.message : 'Unable to load quizzes from the database.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
   }, []);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingQuiz?.title || !editingQuiz?.questions?.length) return;
 
@@ -28,20 +48,28 @@ export default function AdminQuizzesPage() {
       title: editingQuiz.title,
       description: editingQuiz.description || '',
       gradeId: editingQuiz.gradeId || 'grade-1',
-      passingScore: editingQuiz.passingScore || 70,
+      passingScore: editingQuiz.passingScore ?? 70,
       questions: editingQuiz.questions
     };
 
-    ContentService.saveQuiz(quizToSave);
-    refreshData();
+    const result = await ContentService.saveQuiz(quizToSave);
+    if (!result.success) {
+      setErrorMessage(result.error || 'Unable to save quiz.');
+      return;
+    }
     setIsModalOpen(false);
     setEditingQuiz({});
+    await refreshData();
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this quiz?')) {
-      ContentService.deleteQuiz(id);
-      refreshData();
+      const result = await ContentService.deleteQuiz(id);
+      if (!result.success) {
+        setErrorMessage(result.error || 'Unable to delete quiz.');
+        return;
+      }
+      await refreshData();
     }
   };
 
@@ -93,6 +121,9 @@ export default function AdminQuizzesPage() {
           <Plus className="w-4 h-4 text-white" /> Create New Quiz
         </button>
       </div>
+
+      {errorMessage && <div role="alert" className="border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900">{errorMessage}</div>}
+      {loading && <p className="text-xs text-slate-500">Loading quizzes from the database…</p>}
 
       {/* QUIZ TABLE */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">

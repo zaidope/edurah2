@@ -1,4 +1,4 @@
-import { Subject, Course, Lesson, Chapter, Quiz, MediaItem, Grade, QuizQuestion, ClientQuiz, ClientQuizQuestion } from '@/types';
+import { Subject, Course, Lesson, Chapter, Quiz, MediaItem, Grade, ClientQuiz } from '@/types';
 import { INITIAL_SUBJECTS } from '@/content/subjects';
 import { INITIAL_COURSES } from '@/content/courses';
 import { INITIAL_QUIZZES } from '@/content/quizzes';
@@ -51,7 +51,7 @@ class ContentServiceClass {
       const res = await fetch('/api/courses');
       if (res.ok) {
         const json = await res.json();
-        if (json.data?.courses && Array.isArray(json.data.courses) && json.data.courses.length > 0) {
+        if (Array.isArray(json.data?.courses)) {
           this.coursesCache = json.data.courses;
         }
       }
@@ -59,7 +59,7 @@ class ContentServiceClass {
       const qRes = await fetch('/api/quizzes');
       if (qRes.ok) {
         const qJson = await qRes.json();
-        if (qJson.data?.quizzes && Array.isArray(qJson.data.quizzes) && qJson.data.quizzes.length > 0) {
+        if (Array.isArray(qJson.data?.quizzes)) {
           this.quizzesCache = qJson.data.quizzes;
         }
       }
@@ -116,6 +116,39 @@ class ContentServiceClass {
     return this.coursesCache;
   }
 
+  async loadCourses(gradeId?: string, status = 'all'): Promise<Course[]> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token && status !== 'published') throw new Error('Sign in to load course management data.');
+
+    const params = new URLSearchParams({ status });
+    if (gradeId) params.set('gradeId', gradeId);
+    const response = await fetch(`/api/courses?${params}`, session?.access_token
+      ? { headers: { Authorization: `Bearer ${session.access_token}` } }
+      : undefined);
+    const json = await response.json();
+    if (!response.ok || !Array.isArray(json.data?.courses)) {
+      throw new Error(json.error?.message || 'Unable to load courses from the database.');
+    }
+    return json.data.courses as Course[];
+  }
+
+  async loadQuizzes(gradeId?: string, courseId?: string, status = 'all'): Promise<Quiz[]> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token && status !== 'published') throw new Error('Sign in to load quiz management data.');
+
+    const params = new URLSearchParams({ status });
+    if (gradeId) params.set('gradeId', gradeId);
+    if (courseId) params.set('courseId', courseId);
+    const response = await fetch(`/api/quizzes?${params}`, session?.access_token
+      ? { headers: { Authorization: `Bearer ${session.access_token}` } }
+      : undefined);
+    const json = await response.json();
+    if (!response.ok || !Array.isArray(json.data?.quizzes)) {
+      throw new Error(json.error?.message || 'Unable to load quizzes from the database.');
+    }
+    return json.data.quizzes as Quiz[];
+  }
+
   getCoursesByGrade(gradeId: string): Course[] {
     return this.coursesCache.filter((c) => c.gradeId === gradeId);
   }
@@ -140,37 +173,48 @@ class ContentServiceClass {
    * Saves course to in-memory cache and asynchronously persists to PostgreSQL database
    */
   async saveCourse(course: Course): Promise<{ success: boolean; error?: string }> {
-    const index = this.coursesCache.findIndex((c) => c.id === course.id);
-    if (index >= 0) {
-      this.coursesCache[index] = course;
-    } else {
-      this.coursesCache.push(course);
-    }
-
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.access_token) {
-        const res = await fetch('/api/courses', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify(course),
-        });
-        const json = await res.json();
-        if (!res.ok) {
-          return { success: false, error: json.error?.message || 'Database sync failed' };
-        }
+      if (!session?.access_token) {
+        return { success: false, error: 'Sign in before saving a course.' };
       }
+      const res = await fetch('/api/courses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify(course),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        return { success: false, error: json.error?.message || 'Database sync failed' };
+      }
+
+      const index = this.coursesCache.findIndex((cachedCourse) => cachedCourse.id === course.id);
+      if (index >= 0) this.coursesCache[index] = course;
+      else this.coursesCache.push(course);
       return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message || 'Network error saving course' };
+    } catch (error: unknown) {
+      return { success: false, error: error instanceof Error ? error.message : 'Network error saving course' };
     }
   }
 
-  deleteCourse(id: string): void {
-    this.coursesCache = this.coursesCache.filter((c) => c.id !== id);
+  async deleteCourse(id: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return { success: false, error: 'Sign in before deleting a course.' };
+      const response = await fetch(`/api/courses?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const json = await response.json();
+      if (!response.ok) return { success: false, error: json.error?.message || 'Database delete failed' };
+      this.coursesCache = this.coursesCache.filter((course) => course.id !== id);
+      return { success: true };
+    } catch (error: unknown) {
+      return { success: false, error: error instanceof Error ? error.message : 'Network error deleting course' };
+    }
   }
 
   // ==========================================
@@ -308,37 +352,46 @@ class ContentServiceClass {
    * Saves quiz to in-memory cache and asynchronously persists to PostgreSQL database
    */
   async saveQuiz(quiz: Quiz): Promise<{ success: boolean; error?: string }> {
-    const index = this.quizzesCache.findIndex((q) => q.id === quiz.id);
-    if (index >= 0) {
-      this.quizzesCache[index] = quiz;
-    } else {
-      this.quizzesCache.push(quiz);
-    }
-
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.access_token) {
-        const res = await fetch('/api/quizzes', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify(quiz),
-        });
-        const json = await res.json();
-        if (!res.ok) {
-          return { success: false, error: json.error?.message || 'Quiz database sync failed' };
-        }
+      if (!session?.access_token) return { success: false, error: 'Sign in before saving a quiz.' };
+      const response = await fetch('/api/quizzes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify(quiz),
+      });
+      const json = await response.json();
+      if (!response.ok) {
+        return { success: false, error: json.error?.message || 'Quiz database sync failed' };
       }
+
+      const index = this.quizzesCache.findIndex((cachedQuiz) => cachedQuiz.id === quiz.id);
+      if (index >= 0) this.quizzesCache[index] = quiz;
+      else this.quizzesCache.push(quiz);
       return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message || 'Network error saving quiz' };
+    } catch (error: unknown) {
+      return { success: false, error: error instanceof Error ? error.message : 'Network error saving quiz' };
     }
   }
 
-  deleteQuiz(id: string): void {
-    this.quizzesCache = this.quizzesCache.filter((q) => q.id !== id);
+  async deleteQuiz(id: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return { success: false, error: 'Sign in before deleting a quiz.' };
+      const response = await fetch(`/api/quizzes?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const json = await response.json();
+      if (!response.ok) return { success: false, error: json.error?.message || 'Quiz database delete failed' };
+      this.quizzesCache = this.quizzesCache.filter((quiz) => quiz.id !== id);
+      return { success: true };
+    } catch (error: unknown) {
+      return { success: false, error: error instanceof Error ? error.message : 'Network error deleting quiz' };
+    }
   }
 
   // ==========================================

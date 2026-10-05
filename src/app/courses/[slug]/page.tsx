@@ -1,10 +1,11 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, notFound } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { ContentService } from '@/lib/content';
+import { Course } from '@/types';
 import CourseSyllabus from '@/components/course/CourseSyllabus';
 import {
   BookOpen,
@@ -27,8 +28,30 @@ export default function CourseDetailPage() {
   const params = useParams();
   const slug = params?.slug as string;
   const { profile, loading } = useAuth();
+  const [course, setCourse] = useState<Course | null>(null);
+  const [courseLoading, setCourseLoading] = useState(true);
+  const [courseLoadError, setCourseLoadError] = useState('');
 
-  const course = ContentService.getCourseBySlug(slug);
+  useEffect(() => {
+    if (loading || !slug) return;
+    let active = true;
+    void Promise.resolve().then(async () => {
+      if (!active) return;
+      setCourseLoading(true);
+      setCourseLoadError('');
+      try {
+        const gradeId = profile?.role === 'student' || profile?.role === 'teacher' ? profile.gradeId : undefined;
+        const status = profile?.role === 'admin' || profile?.role === 'teacher' ? 'all' : 'published';
+        const courses = await ContentService.loadCourses(gradeId, status);
+        if (active) setCourse(courses.find((item) => item.slug === slug) || null);
+      } catch (error: unknown) {
+        if (active) setCourseLoadError(error instanceof Error ? error.message : 'Could not load this course.');
+      } finally {
+        if (active) setCourseLoading(false);
+      }
+    });
+    return () => { active = false; };
+  }, [slug, loading, profile?.gradeId, profile?.role]);
 
   if (loading) {
     return (
@@ -36,6 +59,14 @@ export default function CourseDetailPage() {
         <div className="w-8 h-8 rounded-full border-2 border-[#d8a471] border-t-transparent animate-spin" />
       </div>
     );
+  }
+
+  if (courseLoading) {
+    return <div className="min-h-[60vh] flex items-center justify-center"><div className="w-8 h-8 rounded-full border-2 border-[#d8a471] border-t-transparent animate-spin" /></div>;
+  }
+
+  if (courseLoadError) {
+    return <div role="alert" className="max-w-3xl mx-auto my-16 border border-rose-300 bg-rose-50 px-5 py-4 text-sm text-rose-900">{courseLoadError}</div>;
   }
 
   if (!course) {

@@ -1,20 +1,37 @@
 'use client';
 
-import React, { useState } from 'react';
-import Link from 'next/link';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { ContentService } from '@/lib/content';
+import { Course } from '@/types';
 import CourseCard from '@/components/course/CourseCard';
-import { BookOpen, Filter, Search, Sparkles } from 'lucide-react';
+import { BookOpen, Filter, Search } from 'lucide-react';
 import PageTransition from '@/components/layout/PageTransition';
 import AnimatedPage from '@/components/layout/AnimatedPage';
 
 export default function CoursesPage() {
   const { profile } = useAuth();
   const grades = ContentService.getGrades();
-  const allCourses = ContentService.getCourses();
+  const [allCourses, setAllCourses] = useState<Course[]>([]);
+  const [loadingCourses, setLoadingCourses] = useState(true);
+  const [courseLoadError, setCourseLoadError] = useState('');
   const [filterGrade, setFilterGrade] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    ContentService.loadCourses(undefined, 'published')
+      .then((loadedCourses) => {
+        if (active) setAllCourses(loadedCourses);
+      })
+      .catch((error: unknown) => {
+        if (active) setCourseLoadError(error instanceof Error ? error.message : 'Unable to load courses.');
+      })
+      .finally(() => {
+        if (active) setLoadingCourses(false);
+      });
+    return () => { active = false; };
+  }, []);
 
   const isAdmin = profile?.role === 'admin';
   const assignedGradeObj = profile?.gradeId ? ContentService.getGradeById(profile.gradeId) : null;
@@ -90,6 +107,9 @@ export default function CoursesPage() {
             )}
           </div>
 
+          {courseLoadError && <div role="alert" className="border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900">{courseLoadError}</div>}
+          {loadingCourses && <p className="text-xs text-[#706b63]">Loading published courses…</p>}
+
           {/* SEARCH & DISCOVERY BAR */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
             <div className="relative flex-1 max-w-md">
@@ -109,7 +129,7 @@ export default function CoursesPage() {
           </div>
 
           {/* COURSES GRID */}
-          {filtered.length === 0 ? (
+          {!loadingCourses && !courseLoadError && filtered.length === 0 ? (
             <div className="bg-white p-12 text-center border border-[#d8d0c2] space-y-3">
               <BookOpen className="w-10 h-10 text-[#a59e93] mx-auto" />
               <h3 className="font-serif-heading text-xl text-[#171819]">No Courses Found</h3>
@@ -117,13 +137,13 @@ export default function CoursesPage() {
                 No active courses matched your search criteria in this view.
               </p>
             </div>
-          ) : (
+          ) : !loadingCourses && !courseLoadError ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {filtered.map((course) => (
                 <CourseCard key={course.id} course={course} />
               ))}
             </div>
-          )}
+          ) : null}
 
         </div>
       </AnimatedPage>

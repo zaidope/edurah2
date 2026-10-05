@@ -8,8 +8,6 @@ import { Course, Lesson, Subject } from '@/types';
 import {
   BookOpen,
   Clock,
-  Star,
-  PlayCircle,
   ShieldCheck,
   Plus,
   Edit2,
@@ -19,10 +17,7 @@ import {
   MoveUp,
   MoveDown,
   Film,
-  FileText,
-  CheckCircle2,
   Eye,
-  Settings2,
   Award
 } from 'lucide-react';
 
@@ -35,12 +30,14 @@ const THUMBNAIL_PRESETS = [
 
 export default function TeacherCoursesPage() {
   const { profile } = useAuth();
-  const teacherGradeId = profile?.gradeId || 'grade-1';
+  const teacherGradeId = profile?.gradeId || '';
   const gradeObj = ContentService.getGradeById(teacherGradeId);
 
   const [courses, setCourses] = useState<Course[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Course Modal state
   const [isCourseModalOpen, setIsCourseModalOpen] = useState(false);
@@ -51,18 +48,52 @@ export default function TeacherCoursesPage() {
   const [isLessonModalOpen, setIsLessonModalOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Partial<Lesson> | null>(null);
 
-  const refreshData = () => {
-    // Strictly isolate courses to teacher's assigned grade
-    setCourses(ContentService.getCoursesByGrade(teacherGradeId));
-    setSubjects(ContentService.getSubjects());
-    if (managingCourse) {
-      const updated = ContentService.getCourseById(managingCourse.id);
-      if (updated) setManagingCourse(updated);
+  const refreshData = async () => {
+    setLoading(true);
+    setErrorMessage('');
+    if (!teacherGradeId) {
+      setCourses([]);
+      setErrorMessage('Your account has no assigned grade. Contact an administrator.');
+      setLoading(false);
+      return;
     }
+    try {
+      const loadedCourses = await ContentService.loadCourses(teacherGradeId, 'all');
+      setCourses(loadedCourses);
+      if (managingCourse) {
+        const updated = loadedCourses.find((course) => course.id === managingCourse.id);
+        if (updated) setManagingCourse(updated);
+      }
+    } catch (error) {
+      setCourses([]);
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to load courses from the database.');
+    }
+    setSubjects(ContentService.getSubjects());
+    setLoading(false);
   };
 
   useEffect(() => {
-    refreshData();
+    let active = true;
+    Promise.resolve()
+      .then(() => {
+        if (!teacherGradeId) throw new Error('Your account has no assigned grade. Contact an administrator.');
+        return ContentService.loadCourses(teacherGradeId, 'all');
+      })
+      .then((loadedCourses) => {
+        if (!active) return;
+        setCourses(loadedCourses);
+        setErrorMessage('');
+        setSubjects(ContentService.getSubjects());
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setCourses([]);
+        setErrorMessage(error instanceof Error ? error.message : 'Unable to load courses from the database.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
   }, [teacherGradeId]);
 
   const extractYouTubeId = (input: string): string => {
@@ -77,7 +108,7 @@ export default function TeacherCoursesPage() {
   };
 
   // COURSE ACTIONS
-  const handleSaveCourse = (e: React.FormEvent) => {
+  const handleSaveCourse = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCourse?.title || !editingCourse?.subjectId) return;
 
@@ -93,10 +124,10 @@ export default function TeacherCoursesPage() {
       shortDescription: editingCourse.shortDescription || '',
       description: editingCourse.description || '',
       thumbnail: editingCourse.thumbnail || THUMBNAIL_PRESETS[0].url,
-      level: (editingCourse.level as any) || 'Beginner',
+      level: editingCourse.level || 'Beginner',
       duration: editingCourse.duration || '2h 00m',
       lessonCount: editingCourse.chapters ? editingCourse.chapters.reduce((acc, ch) => acc + ch.lessons.length, 0) : (editingCourse.lessonCount || 0),
-      rating: editingCourse.rating || 5.0,
+      rating: editingCourse.rating ?? 0,
       studentsEnrolled: editingCourse.studentsEnrolled || 0,
       featured: editingCourse.featured ?? true,
       status: editingCourse.status || 'published',
@@ -119,21 +150,29 @@ export default function TeacherCoursesPage() {
       ]
     };
 
-    ContentService.saveCourse(courseToSave);
-    refreshData();
+    const result = await ContentService.saveCourse(courseToSave);
+    if (!result.success) {
+      setErrorMessage(result.error || 'Unable to save course.');
+      return;
+    }
     setIsCourseModalOpen(false);
     setEditingCourse(null);
+    await refreshData();
   };
 
-  const handleDeleteCourse = (courseId: string) => {
+  const handleDeleteCourse = async (courseId: string) => {
     if (confirm('Are you sure you want to delete this course? Students in your grade will no longer be able to access it.')) {
-      ContentService.deleteCourse(courseId);
-      refreshData();
+      const result = await ContentService.deleteCourse(courseId);
+      if (!result.success) {
+        setErrorMessage(result.error || 'Unable to delete course.');
+        return;
+      }
+      await refreshData();
     }
   };
 
   // LESSON ACTIONS
-  const handleSaveLesson = (e: React.FormEvent) => {
+  const handleSaveLesson = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!managingCourse || !editingLesson?.title) return;
 
@@ -182,14 +221,18 @@ export default function TeacherCoursesPage() {
     courseCopy.lessonCount = chapter.lessons.length;
     courseCopy.updatedAt = new Date().toISOString().split('T')[0];
 
-    ContentService.saveCourse(courseCopy);
+    const result = await ContentService.saveCourse(courseCopy);
+    if (!result.success) {
+      setErrorMessage(result.error || 'Unable to save lesson.');
+      return;
+    }
     setManagingCourse(courseCopy);
-    refreshData();
+    await refreshData();
     setIsLessonModalOpen(false);
     setEditingLesson(null);
   };
 
-  const handleDeleteLesson = (lessonId: string) => {
+  const handleDeleteLesson = async (lessonId: string) => {
     if (!managingCourse) return;
     if (!confirm('Are you sure you want to delete this lesson?')) return;
 
@@ -199,12 +242,16 @@ export default function TeacherCoursesPage() {
     });
     courseCopy.lessonCount = courseCopy.chapters.reduce((acc, ch) => acc + ch.lessons.length, 0);
 
-    ContentService.saveCourse(courseCopy);
+    const result = await ContentService.saveCourse(courseCopy);
+    if (!result.success) {
+      setErrorMessage(result.error || 'Unable to delete lesson.');
+      return;
+    }
     setManagingCourse(courseCopy);
-    refreshData();
+    await refreshData();
   };
 
-  const handleReorderLesson = (lessonIndex: number, direction: 'up' | 'down') => {
+  const handleReorderLesson = async (lessonIndex: number, direction: 'up' | 'down') => {
     if (!managingCourse) return;
     const courseCopy: Course = JSON.parse(JSON.stringify(managingCourse));
     const lessons = courseCopy.chapters[0]?.lessons;
@@ -222,12 +269,16 @@ export default function TeacherCoursesPage() {
       l.order = idx + 1;
     });
 
-    ContentService.saveCourse(courseCopy);
+    const result = await ContentService.saveCourse(courseCopy);
+    if (!result.success) {
+      setErrorMessage(result.error || 'Unable to reorder lessons.');
+      return;
+    }
     setManagingCourse(courseCopy);
-    refreshData();
+    await refreshData();
   };
 
-  const handleToggleLessonPublish = (lessonId: string) => {
+  const handleToggleLessonPublish = async (lessonId: string) => {
     if (!managingCourse) return;
     const courseCopy: Course = JSON.parse(JSON.stringify(managingCourse));
     courseCopy.chapters.forEach(ch => {
@@ -237,9 +288,13 @@ export default function TeacherCoursesPage() {
       }
     });
 
-    ContentService.saveCourse(courseCopy);
+    const result = await ContentService.saveCourse(courseCopy);
+    if (!result.success) {
+      setErrorMessage(result.error || 'Unable to update lesson publication.');
+      return;
+    }
     setManagingCourse(courseCopy);
-    refreshData();
+    await refreshData();
   };
 
   const filteredCourses = courses.filter(c =>
@@ -266,6 +321,7 @@ export default function TeacherCoursesPage() {
         </div>
 
         <button
+          disabled={!teacherGradeId || loading}
           onClick={() => {
             setEditingCourse({
               title: '',
@@ -279,11 +335,14 @@ export default function TeacherCoursesPage() {
             });
             setIsCourseModalOpen(true);
           }}
-          className="edurah-btn-primary text-xs px-4 py-2.5 inline-flex items-center gap-2 cursor-pointer shadow-xs"
+          className="edurah-btn-primary text-xs px-4 py-2.5 inline-flex items-center gap-2 cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus className="w-4 h-4" /> Create Course
         </button>
       </div>
+
+      {errorMessage && <div role="alert" className="border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900">{errorMessage}</div>}
+      {loading && <p className="text-xs text-[#6f6b63]">Loading courses from the database…</p>}
 
       {/* SEARCH BAR */}
       <div className="bg-[#faf8f5] p-3 rounded-2xl border border-[#d8d0c2] flex items-center justify-between gap-4">
@@ -303,12 +362,12 @@ export default function TeacherCoursesPage() {
       </div>
 
       {/* COURSES GRID */}
-      {filteredCourses.length === 0 ? (
+      {!loading && !errorMessage && filteredCourses.length === 0 ? (
         <div className="edurah-card-warm p-12 text-center rounded-2xl border border-[#d8d0c2] space-y-4">
           <BookOpen className="w-12 h-12 text-[#9d978c] mx-auto" />
           <h3 className="font-serif-heading text-lg font-normal text-[#171819]">No Courses Found</h3>
           <p className="text-xs text-[#6f6b63] max-w-sm mx-auto">
-            You have not created any courses for {gradeObj?.name} yet. Click "Create Course" above to build your cohort curriculum.
+            You have not created any courses for {gradeObj?.name} yet. Click &quot;Create Course&quot; above to build your cohort curriculum.
           </p>
           <button
             onClick={() => {
@@ -329,7 +388,7 @@ export default function TeacherCoursesPage() {
             <Plus className="w-3.5 h-3.5" /> Create First Course
           </button>
         </div>
-      ) : (
+      ) : !loading && !errorMessage ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredCourses.map((course) => {
             const allLessons = course.chapters ? course.chapters.flatMap(ch => ch.lessons) : [];
@@ -424,7 +483,7 @@ export default function TeacherCoursesPage() {
             );
           })}
         </div>
-      )}
+      ) : null}
 
       {/* CREATE / EDIT COURSE MODAL */}
       {isCourseModalOpen && editingCourse && (
@@ -489,7 +548,7 @@ export default function TeacherCoursesPage() {
                   <label className="font-bold text-[#171819]">Publication Status</label>
                   <select
                     value={editingCourse.status || 'published'}
-                    onChange={(e: any) => setEditingCourse({ ...editingCourse, status: e.target.value })}
+                    onChange={(e) => setEditingCourse({ ...editingCourse, status: e.target.value as NonNullable<Course['status']> })}
                     className="w-full px-3 py-2 rounded-xl bg-white border border-[#d8d0c2] text-[#171819] font-semibold focus:outline-none focus:border-[#d8a471]"
                   >
                     <option value="published">Published (Visible to Students)</option>

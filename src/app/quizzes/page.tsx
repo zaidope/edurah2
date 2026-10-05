@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { ContentService } from '@/lib/content';
+import { Quiz } from '@/types';
 import GradeForbiddenAccess from '@/components/auth/GradeForbiddenAccess';
 import { Award, ArrowRight, Filter, Search, HelpCircle } from 'lucide-react';
 import PageTransition from '@/components/layout/PageTransition';
@@ -12,9 +13,28 @@ import AnimatedPage from '@/components/layout/AnimatedPage';
 export default function QuizzesPage() {
   const { profile, loading } = useAuth();
   const grades = ContentService.getGrades();
-  const allQuizzes = ContentService.getQuizzes();
+  const [allQuizzes, setAllQuizzes] = useState<Quiz[]>([]);
+  const [loadingQuizzes, setLoadingQuizzes] = useState(true);
+  const [quizLoadError, setQuizLoadError] = useState('');
   const [filterGrade, setFilterGrade] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    if (!profile) return;
+    let active = true;
+    const gradeId = profile.role === 'admin' ? undefined : profile.gradeId;
+    ContentService.loadQuizzes(gradeId, undefined, 'published')
+      .then((loadedQuizzes) => {
+        if (active) setAllQuizzes(loadedQuizzes);
+      })
+      .catch((error: unknown) => {
+        if (active) setQuizLoadError(error instanceof Error ? error.message : 'Unable to load assessments.');
+      })
+      .finally(() => {
+        if (active) setLoadingQuizzes(false);
+      });
+    return () => { active = false; };
+  }, [profile]);
 
   if (loading) {
     return (
@@ -90,6 +110,9 @@ export default function QuizzesPage() {
             )}
           </div>
 
+          {quizLoadError && <div role="alert" className="border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900">{quizLoadError}</div>}
+          {loadingQuizzes && <p className="text-xs text-[#706b63]">Loading published assessments…</p>}
+
           {/* SEARCH */}
           <div className="relative max-w-md">
             <Search className="w-4 h-4 text-[#9d978c] absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -103,7 +126,7 @@ export default function QuizzesPage() {
           </div>
 
           {/* QUIZZES GRID */}
-          {filtered.length === 0 ? (
+          {!loadingQuizzes && !quizLoadError && filtered.length === 0 ? (
             <div className="edurah-card-warm p-12 text-center rounded-2xl border border-[#d8d0c2] space-y-3">
               <Award className="w-10 h-10 text-[#9d978c] mx-auto" />
               <h3 className="font-serif-heading text-lg font-normal text-[#171819]">No Assessments Found</h3>
@@ -111,7 +134,7 @@ export default function QuizzesPage() {
                 There are currently no active quizzes for this curriculum matching your query.
               </p>
             </div>
-          ) : (
+          ) : !loadingQuizzes && !quizLoadError ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filtered.map(quiz => {
                 const quizGrade = grades.find(g => g.id === quiz.gradeId);
@@ -163,7 +186,7 @@ export default function QuizzesPage() {
                 );
               })}
             </div>
-          )}
+          ) : null}
 
         </div>
       </AnimatedPage>

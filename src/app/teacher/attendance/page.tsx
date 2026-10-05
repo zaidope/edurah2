@@ -3,21 +3,21 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase/client';
 import { Section, AttendanceStatus, AttendanceRecord } from '@/types';
 import {
-  Calendar,
-  Users,
-  CheckCircle2,
-  XCircle,
   Clock,
-  ShieldAlert,
   ArrowLeft,
   Save,
   AlertTriangle,
-  Lock,
-  Search,
-  Filter
+  Lock
 } from 'lucide-react';
+
+async function getSessionHeaders(): Promise<HeadersInit> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error('Your session has ended. Please sign in again.');
+  return { Authorization: `Bearer ${session.access_token}` };
+}
 
 export default function TeacherAttendancePage() {
   const { profile, loading: authLoading } = useAuth();
@@ -45,14 +45,20 @@ export default function TeacherAttendancePage() {
     async function loadSections() {
       try {
         const gradeParam = profile?.gradeId ? `?gradeId=${profile.gradeId}` : '';
-        const res = await fetch(`/api/sections${gradeParam}`);
+        const res = await fetch(`/api/sections${gradeParam}`, { headers: await getSessionHeaders() });
         const json = await res.json();
+        if (!res.ok) throw new Error(json.error?.message || 'Unable to load sections.');
         if (json.data?.sections && json.data.sections.length > 0) {
           setSections(json.data.sections);
           setSelectedSectionId(json.data.sections[0].id);
+        } else {
+          setSections([]);
+          setLoading(false);
+          setMessage({ text: 'No sections are assigned to your grade yet.', type: 'error' });
         }
-      } catch {
-        // Fallback
+      } catch (error) {
+        setLoading(false);
+        setMessage({ text: error instanceof Error ? error.message : 'Unable to load sections.', type: 'error' });
       }
     }
     if (!authLoading) {
@@ -69,14 +75,17 @@ export default function TeacherAttendancePage() {
       setMessage(null);
       try {
         // 1. Fetch roster
-        const rosterRes = await fetch(`/api/sections/${selectedSectionId}/roster`);
+        const headers = await getSessionHeaders();
+        const rosterRes = await fetch(`/api/sections/${selectedSectionId}/roster`, { headers });
         const rosterJson = await rosterRes.json();
+        if (!rosterRes.ok) throw new Error(rosterJson.error?.message || 'Unable to load the section roster.');
         const students = rosterJson.data?.students || [];
         setRoster(students);
 
         // 2. Fetch existing attendance records
-        const attRes = await fetch(`/api/attendance?sectionId=${selectedSectionId}&date=${selectedDate}`);
+        const attRes = await fetch(`/api/attendance?sectionId=${selectedSectionId}&date=${selectedDate}`, { headers });
         const attJson = await attRes.json();
+        if (!attRes.ok) throw new Error(attJson.error?.message || 'Unable to load attendance records.');
         const existingRecords: AttendanceRecord[] = attJson.data?.records || [];
 
         const statusMap: Record<string, AttendanceStatus> = {};
@@ -85,8 +94,8 @@ export default function TeacherAttendancePage() {
           statusMap[s.id] = rec ? rec.status : 'present'; // Default to present
         }
         setStatuses(statusMap);
-      } catch {
-        // Fallback
+      } catch (error) {
+        setMessage({ text: error instanceof Error ? error.message : 'Unable to load attendance records.', type: 'error' });
       } finally {
         setLoading(false);
       }
@@ -161,7 +170,7 @@ export default function TeacherAttendancePage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+          ...await getSessionHeaders(),
         },
         body: JSON.stringify({
           sectionId: selectedSectionId,
@@ -180,8 +189,8 @@ export default function TeacherAttendancePage() {
         text: `Successfully saved roll call for ${json.data?.savedCount || records.length} students.`,
         type: 'success',
       });
-    } catch (err: any) {
-      setMessage({ text: err.message || 'Error recording roll call', type: 'error' });
+    } catch (error: unknown) {
+      setMessage({ text: error instanceof Error ? error.message : 'Error recording roll call', type: 'error' });
     } finally {
       setSaving(false);
     }

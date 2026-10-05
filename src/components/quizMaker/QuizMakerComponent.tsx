@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Quiz, QuizQuestion } from '@/types';
 import { ContentService } from '@/lib/content';
@@ -13,13 +13,11 @@ import {
   ArrowRight,
   HelpCircle,
   AlertCircle,
-  Save,
   Check,
   FileCheck2,
   SlidersHorizontal,
   ChevronLeft,
-  Clock,
-  Calendar
+  Clock
 } from 'lucide-react';
 
 interface QuizMakerProps {
@@ -30,16 +28,14 @@ interface QuizMakerProps {
 export default function QuizMakerComponent({ allowedGradeId, role }: QuizMakerProps) {
   const router = useRouter();
   const grades = ContentService.getGrades();
-  const allCourses = ContentService.getCourses();
-
+  const isTeacher = role === 'teacher';
   const [selectedGradeId, setSelectedGradeId] = useState<string>(
-    allowedGradeId || 'grade-1'
+    allowedGradeId || (isTeacher ? '' : grades[0]?.id || '')
   );
-
-  const availableCourses = allCourses.filter(c => c.gradeId === selectedGradeId);
-  const [selectedCourseId, setSelectedCourseId] = useState<string>(
-    availableCourses[0]?.id || ''
-  );
+  const [availableCourses, setAvailableCourses] = useState<Awaited<ReturnType<typeof ContentService.loadCourses>>>([]);
+  const [coursesLoading, setCoursesLoading] = useState(true);
+  const [courseLoadError, setCourseLoadError] = useState('');
+  const [selectedCourseId, setSelectedCourseId] = useState('');
 
   const [step, setStep] = useState<'upload' | 'edit'>('upload');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -54,6 +50,42 @@ export default function QuizMakerComponent({ allowedGradeId, role }: QuizMakerPr
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [parserWarnings, setParserWarnings] = useState<string[]>([]);
   const [publishedSuccess, setPublishedSuccess] = useState<string | null>(null);
+  const [publishError, setPublishError] = useState('');
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    async function loadGradeCourses() {
+      if (isTeacher && selectedGradeId !== (allowedGradeId || '')) {
+        setSelectedGradeId(allowedGradeId || '');
+        return;
+      }
+      setCoursesLoading(true);
+      setCourseLoadError('');
+      if (!selectedGradeId) {
+        setAvailableCourses([]);
+        setSelectedCourseId('');
+        setCourseLoadError(isTeacher ? 'Your account has no assigned grade. Contact an administrator.' : 'Select a curriculum grade to load its courses.');
+        setCoursesLoading(false);
+        return;
+      }
+      try {
+        const loadedCourses = await ContentService.loadCourses(selectedGradeId, 'all');
+        if (!active) return;
+        setAvailableCourses(loadedCourses);
+        setSelectedCourseId((current) => loadedCourses.some((course) => course.id === current) ? current : '');
+      } catch (error: unknown) {
+        if (!active) return;
+        setAvailableCourses([]);
+        setSelectedCourseId('');
+        setCourseLoadError(error instanceof Error ? error.message : 'Could not load curriculum courses.');
+      } finally {
+        if (active) setCoursesLoading(false);
+      }
+    }
+    void Promise.resolve().then(loadGradeCourses);
+    return () => { active = false; };
+  }, [allowedGradeId, isTeacher, selectedGradeId]);
 
   // Handle PDF file upload
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -138,8 +170,10 @@ export default function QuizMakerComponent({ allowedGradeId, role }: QuizMakerPr
     }
   };
 
-  const handlePublish = () => {
-    if (!quizTitle.trim() || questions.length === 0) return;
+  const handlePublish = async () => {
+    if (!quizTitle.trim() || questions.length === 0 || isPublishing) return;
+    setIsPublishing(true);
+    setPublishError('');
 
     const quizId = `quiz-gen-${Date.now()}`;
     const totalMarks = questions.reduce((sum, q) => sum + (q.marks || 1), 0);
@@ -164,8 +198,10 @@ export default function QuizMakerComponent({ allowedGradeId, role }: QuizMakerPr
       }))
     };
 
-    ContentService.saveQuiz(newQuiz);
-    setPublishedSuccess(quizId);
+    const result = await ContentService.saveQuiz(newQuiz);
+    if (result.success) setPublishedSuccess(quizId);
+    else setPublishError(result.error || 'The quiz could not be saved.');
+    setIsPublishing(false);
   };
 
   const currentGradeName = grades.find(g => g.id === selectedGradeId)?.name || selectedGradeId;
@@ -193,9 +229,9 @@ export default function QuizMakerComponent({ allowedGradeId, role }: QuizMakerPr
             <label className="text-[11px] font-bold uppercase tracking-wider text-[#6f6b63] block mb-1">
               Curriculum Target
             </label>
-            {allowedGradeId ? (
+            {isTeacher || allowedGradeId ? (
               <div className="px-3.5 py-2 rounded-lg bg-[#ede6d8]/60 border border-[#d8d0c2] text-[#171819] text-xs font-semibold flex items-center justify-between">
-                <span>{currentGradeName}</span>
+                <span>{allowedGradeId ? currentGradeName : 'Grade assignment required'}</span>
                 <span className="text-[10px] uppercase font-bold text-[#8e5a2b] tracking-wider">Assigned Cohort</span>
               </div>
             ) : (
@@ -203,8 +239,7 @@ export default function QuizMakerComponent({ allowedGradeId, role }: QuizMakerPr
                 value={selectedGradeId}
                 onChange={(e) => {
                   setSelectedGradeId(e.target.value);
-                  const courses = allCourses.filter(c => c.gradeId === e.target.value);
-                  setSelectedCourseId(courses[0]?.id || '');
+                  setSelectedCourseId('');
                 }}
                 className="w-full px-3.5 py-2 rounded-lg bg-white border border-[#d8d0c2] text-xs font-semibold text-[#171819] focus:outline-none focus:border-[#d8a471]"
               >
@@ -224,6 +259,7 @@ export default function QuizMakerComponent({ allowedGradeId, role }: QuizMakerPr
             <select
               value={selectedCourseId}
               onChange={(e) => setSelectedCourseId(e.target.value)}
+              disabled={coursesLoading || !!courseLoadError}
               className="w-full px-3.5 py-2 rounded-lg bg-white border border-[#d8d0c2] text-xs font-semibold text-[#171819] focus:outline-none focus:border-[#d8a471]"
             >
               <option value="">General Grade Quiz (All Cohort Students)</option>
@@ -234,8 +270,12 @@ export default function QuizMakerComponent({ allowedGradeId, role }: QuizMakerPr
               ))}
             </select>
           </div>
+          {courseLoadError && <p role="alert" className="text-xs text-rose-700">{courseLoadError}</p>}
+          {coursesLoading && <p className="text-xs text-[#706b63]">Loading courses…</p>}
         </div>
       </div>
+
+      {publishError && <div role="alert" className="border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900">{publishError}</div>}
 
       {/* PUBLISHED SUCCESS BANNER */}
       {publishedSuccess && (
@@ -263,7 +303,6 @@ export default function QuizMakerComponent({ allowedGradeId, role }: QuizMakerPr
             <button
               onClick={() => {
                 setPublishedSuccess(null);
-                setStep('upload');
                 setQuestions([]);
               }}
               className="px-5 py-2.5 rounded-xl bg-white border border-[#bbf7d0] text-[#14532d] text-xs font-semibold hover:bg-[#dcfce7] transition-colors cursor-pointer"
@@ -628,10 +667,11 @@ export default function QuizMakerComponent({ allowedGradeId, role }: QuizMakerPr
             <button
               type="button"
               onClick={handlePublish}
+              disabled={isPublishing || !selectedGradeId || coursesLoading || !!courseLoadError}
               className="edurah-btn-primary cursor-pointer inline-flex items-center gap-2 text-xs px-6 py-2.5"
             >
               <FileCheck2 className="w-4 h-4" />
-              Publish Quiz to {currentGradeName}
+              {isPublishing ? 'Publishing…' : `Publish Quiz to ${currentGradeName}`}
             </button>
           </div>
         </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { UserProfile } from '@/types';
 import { supabase } from '@/lib/supabase/client';
 
@@ -22,25 +22,29 @@ const AuthContext = createContext<AuthContextType>({
   refreshProfile: async () => {},
 });
 
-function toProfile(record: Record<string, unknown>, userMeta?: Record<string, unknown>): UserProfile {
-  const resolvedGradeId =
-    typeof record.grade_id === 'string' && record.grade_id
-      ? record.grade_id
-      : typeof userMeta?.grade_id === 'string' && userMeta.grade_id.startsWith('grade-')
-      ? userMeta.grade_id
-      : record.role === 'student'
-      ? 'grade-1'
-      : undefined;
+const AUTH_REQUEST_TIMEOUT_MS = 15000;
+const PROFILE_REQUEST_TIMEOUT_MS = 10000;
 
+function withTimeout<T>(operation: PromiseLike<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([Promise.resolve(operation), timeout]).finally(() => {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  });
+}
+
+function toProfile(record: Record<string, unknown>, userMeta?: Record<string, unknown>): UserProfile {
   return {
     id: String(record.id),
     fullName: String(record.full_name || userMeta?.full_name || ''),
     email: String(record.email || ''),
-    studentId: String(record.student_id || userMeta?.student_id || ''),
-    role: (record.role || userMeta?.role) as UserProfile['role'],
-    gradeId: resolvedGradeId,
+    studentId: String(record.student_id || ''),
+    role: (record.role || 'student') as UserProfile['role'],
+    gradeId: typeof record.grade_id === 'string' && record.grade_id ? record.grade_id : undefined,
     classGroup: typeof record.class_group === 'string' ? record.class_group : undefined,
-    academicBatch: typeof record.academic_batch === 'string' ? record.academic_batch : (typeof userMeta?.academic_batch === 'string' ? userMeta.academic_batch : '2025–2026'),
+    academicBatch: typeof record.academic_batch === 'string' ? record.academic_batch : undefined,
     isActive: Boolean(record.is_active ?? true),
     createdAt: String(record.created_at || ''),
     updatedAt: String(record.updated_at || ''),
@@ -51,19 +55,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthContextType['user']>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const profileRequests = useRef(new Map<string, Promise<UserProfile | null>>());
 
-  const loadProfile = useCallback(async (userId: string, userMeta?: Record<string, unknown>) => {
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
-    if (error || !data) {
-      // If profile row doesn't exist yet, construct from user metadata if available
+  const loadProfile = useCallback((userId: string, userMeta?: Record<string, unknown>) => {
+    const existingRequest = profileRequests.current.get(userId);
+    if (existingRequest) return existingRequest;
+
+    const request = (async () => {
+    const setFallbackProfile = () => {
       if (userMeta) {
         const fallbackProfile: UserProfile = {
           id: userId,
           fullName: String(userMeta.full_name || ''),
           email: '',
-          studentId: String(userMeta.student_id || ''),
-          role: (userMeta.role as UserProfile['role']) || 'student',
-          gradeId: typeof userMeta.grade_id === 'string' ? userMeta.grade_id : 'grade-1',
+          studentId: '',
+          role: 'student',
+          gradeId: undefined,
           isActive: true,
           createdAt: '',
           updatedAt: '',
@@ -73,19 +80,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setProfile(null);
       return null;
+    };
+
+    let data;
+    let error;
+    try {
+      const result = await withTimeout(
+        supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
+        PROFILE_REQUEST_TIMEOUT_MS,
+        'Profile request timed out.',
+      );
+      data = result.data;
+      error = result.error;
+    } catch {
+      return setFallbackProfile();
+    }
+
+    if (error || !data) {
+      // Keep a restricted student shell when the authoritative profile is unavailable.
+      return setFallbackProfile();
     }
     const nextProfile = toProfile(data, userMeta);
     setProfile(nextProfile.isActive ? nextProfile : null);
 
-    // Auto-heal grade_id in profiles table if null but available in metadata
-    if (userMeta?.grade_id && typeof userMeta.grade_id === 'string' && !data.grade_id) {
-      void supabase.from('profiles').update({ grade_id: userMeta.grade_id }).eq('id', userId);
-    }
-
     return nextProfile;
+    })();
+    profileRequests.current.set(userId, request);
+    return request.finally(() => {
+      if (profileRequests.current.get(userId) === request) {
+        profileRequests.current.delete(userId);
+      }
+    });
   }, []);
 
-  const syncSession = useCallback(async (sessionUser: any | null) => {
+  const syncSession = useCallback(async (sessionUser: { id: string; email?: string; user_metadata: Record<string, unknown> } | null) => {
     if (!sessionUser) {
       setUser(null);
       setProfile(null);
@@ -99,12 +127,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    void supabase.auth.getSession().then(({ data }) => {
-      if (active) void syncSession(data.session?.user ?? null);
-    }).catch(() => {
-      if (active) setLoading(false);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'TOKEN_REFRESHED') return;
       if (active) void syncSession(session?.user ?? null);
     });
     return () => {
@@ -115,20 +139,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     setLoading(true);
-    const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    if (error || !data.user) {
+    try {
+      const { data, error } = await withTimeout(
+        supabase.auth.signInWithPassword({ email: email.trim(), password }),
+        AUTH_REQUEST_TIMEOUT_MS,
+        'Sign-in timed out. Check your connection and try again.',
+      );
+      if (error || !data.user) {
+        return { success: false, error: 'We couldn’t sign you in with those details. Please check your email and password.' };
+      }
+      const nextProfile = await loadProfile(data.user.id, data.user.user_metadata);
+      setUser(data.user);
+      if (!nextProfile) {
+        await withTimeout(supabase.auth.signOut(), 5000, 'Sign-out timed out.').catch(() => undefined);
+        setUser(null);
+        return { success: false, error: 'Your account is not ready to use yet. Please contact your school administrator.' };
+      }
+      return { success: true, role: nextProfile.role };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unable to sign in. Please try again.',
+      };
+    } finally {
       setLoading(false);
-      return { success: false, error: 'We couldn’t sign you in with those details. Please check your email and password.' };
     }
-    const nextProfile = await loadProfile(data.user.id, data.user.user_metadata);
-    setUser(data.user);
-    setLoading(false);
-    if (!nextProfile) {
-      await supabase.auth.signOut();
-      setUser(null);
-      return { success: false, error: 'Your account is not ready to use yet. Please contact your school administrator.' };
-    }
-    return { success: true, role: nextProfile.role };
   };
 
   const logout = async () => {

@@ -2,11 +2,11 @@ import React from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ContentService } from '@/lib/content';
-import CourseCard from '@/components/course/CourseCard';
-import { BookOpen, Film, Award, ChevronLeft, ArrowRight } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import PageTransition from '@/components/layout/PageTransition';
 import AnimatedPage from '@/components/layout/AnimatedPage';
 import { getSubjectIdentity } from '@/components/subjects/SubjectMotif';
+import SubjectCatalog from './SubjectCatalog';
 
 interface SubjectPageProps {
   params: Promise<{ slug: string }>;
@@ -21,8 +21,6 @@ export default async function SubjectDetailPage({ params }: SubjectPageProps) {
   }
 
   const identity = getSubjectIdentity(slug);
-  const courses = ContentService.getCoursesBySubject(subject.id);
-  const quizzes = ContentService.getQuizzes().filter((q) => q.subjectId === subject.id);
 
   return (
     <PageTransition>
@@ -54,20 +52,6 @@ export default async function SubjectDetailPage({ params }: SubjectPageProps) {
                   {subject.description}
                 </p>
 
-                <div className="flex flex-wrap items-center gap-6 pt-3 text-xs opacity-80 border-t border-white/15">
-                  <div className="flex items-center gap-2">
-                    <BookOpen className="w-4 h-4 text-[#d8a471]" />
-                    <span>{subject.courseCount} Courses</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Film className="w-4 h-4 text-[#d8a471]" />
-                    <span>{subject.lessonCount} Video Lectures</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Award className="w-4 h-4 text-[#dca66c]" />
-                    <span>{quizzes.length} Quizzes</span>
-                  </div>
-                </div>
               </div>
 
               <div className="lg:col-span-5">
@@ -76,35 +60,7 @@ export default async function SubjectDetailPage({ params }: SubjectPageProps) {
             </div>
           </div>
 
-          {/* COURSES IN THIS SUBJECT */}
-          <section className="space-y-6">
-            <div className="border-b border-[#d8d0c2] pb-4">
-              <p className="edurah-eyebrow">
-                <span /> Structured Curricula
-              </p>
-              <h2 className="font-serif-heading text-2xl sm:text-3xl font-normal text-[#171819]">
-                Courses in {subject.name}
-              </h2>
-              <p className="text-xs text-[#555048] mt-1">
-                Sequenced learning paths ordered by foundational concepts through advanced mastery.
-              </p>
-            </div>
-
-            {courses.length === 0 ? (
-              <div className="p-10 bg-white border border-[#d8d0c2] text-center space-y-2">
-                <p className="text-xs text-[#706b63]">No courses published under this discipline yet.</p>
-                <Link href="/courses" className="text-xs font-bold uppercase tracking-wider text-[#81512f] hover:underline">
-                  Browse all active courses →
-                </Link>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {courses.map((course) => (
-                  <CourseCard key={course.id} course={course} />
-                ))}
-              </div>
-            )}
-          </section>
+          <SubjectCatalog subjectId={subject.id} subjectName={subject.name} />
         </div>
       </AnimatedPage>
     </PageTransition>

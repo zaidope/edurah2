@@ -82,6 +82,13 @@ export default function AdminSidebar() {
           <span>Return to Public Site</span>
           <LogOut className="w-3.5 h-3.5 text-[#6f6b63]" />
         </Link>
+        <Link
+          href="/prototypes"
+          className="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-[#9d978c] hover:text-[#f6f2e9] hover:bg-[#17191b] transition-colors"
+        >
+          <span>Explore portal prototypes</span>
+          <BookOpen className="w-3.5 h-3.5 text-[#6f6b63]" />
+        </Link>
       </div>
     </aside>
   );

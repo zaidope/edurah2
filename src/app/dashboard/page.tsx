@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { ContentService } from '@/lib/content';
+import { Course, Quiz, QuizResult } from '@/types';
 import { ProgressService } from '@/lib/progress';
 import { getThemeForGrade } from '@/lib/gradeTheme';
 import GradeWorldEnvironment from '@/components/grades/GradeWorldEnvironment';
@@ -21,14 +22,16 @@ import {
   ArrowRight,
   Search,
   Sparkles,
-  Layers,
-  GraduationCap
 } from 'lucide-react';
 
 export default function StudentDashboardPage() {
   const router = useRouter();
   const { profile, loading } = useAuth();
   const [progress, setProgress] = useState(ProgressService.getProgress());
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [assessmentTab, setAssessmentTab] = useState<'available' | 'upcoming' | 'completed'>('available');
 
@@ -40,35 +43,38 @@ export default function StudentDashboardPage() {
   }, [profile, loading, router]);
 
   useEffect(() => {
-    setProgress(ProgressService.getProgress());
-
-    // Live sync from Supabase database source of truth
-    async function syncDatabaseProgress() {
-      if (!profile?.id) return;
-      try {
-        const { data: { session } } = await import('@/lib/supabase/client').then(m => m.supabase.auth.getSession());
-        if (session?.access_token) {
-          const res = await fetch('/api/progress/user', {
-            headers: { Authorization: `Bearer ${session.access_token}` }
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.success) {
-              const resultsList = Array.isArray(data.quizResults)
-                ? data.quizResults
-                : Object.values(data.quizResults || data.quizResultsMap || {});
-              resultsList.forEach((qr: any) => ProgressService.saveQuizResult(qr));
-              setProgress(ProgressService.getProgress());
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Failed to sync user database progress:', err);
-      }
-    }
-
-    syncDatabaseProgress();
+    if (!profile?.id) return;
+    let active = true;
+    ProgressService.syncFromSupabase(profile.id).then((syncedProgress) => {
+      if (active) setProgress(syncedProgress);
+    });
+    return () => { active = false; };
   }, [profile?.id]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    let active = true;
+    Promise.resolve()
+      .then(() => {
+        if (!profile.gradeId) throw new Error('Your account has no assigned grade. Contact an administrator.');
+        return Promise.all([
+          ContentService.loadCourses(profile.gradeId, 'published'),
+          ContentService.loadQuizzes(profile.gradeId, undefined, 'published'),
+        ]);
+      })
+      .then(([loadedCourses, loadedQuizzes]) => {
+        if (!active) return;
+        setCourses(loadedCourses);
+        setQuizzes(loadedQuizzes);
+      })
+      .catch((error: unknown) => {
+        if (active) setCatalogError(error instanceof Error ? error.message : 'Unable to load your grade curriculum.');
+      })
+      .finally(() => {
+        if (active) setCatalogLoading(false);
+      });
+    return () => { active = false; };
+  }, [profile?.id, profile?.gradeId]);
 
   if (loading || !profile) {
     return (
@@ -78,14 +84,11 @@ export default function StudentDashboardPage() {
     );
   }
 
-  const studentGradeId = profile.gradeId || 'grade-1';
+  const studentGradeId = profile.gradeId || '';
   const gradeObj = ContentService.getGradeById(studentGradeId);
   const theme = getThemeForGrade(studentGradeId);
 
   // DYNAMIC FILTERING: ONLY courses and quizzes for the student's assigned grade!
-  const courses = ContentService.getCoursesByGrade(studentGradeId);
-  const quizzes = ContentService.getQuizzesByGrade(studentGradeId);
-
   const studentFirstName = profile.fullName ? profile.fullName.split(' ')[0] : 'Student';
 
   // Determine continue learning target
@@ -107,17 +110,17 @@ export default function StudentDashboardPage() {
     return courses.some((c) => c.chapters.some((ch) => ch.lessons.some((l) => l.id === lessonId && (l.isPublished ?? true))));
   }).length;
   const totalPassedQuizzes = Object.values(progress.quizResults).filter((q) => {
-    const quizObj = ContentService.getQuizById(q.quizId);
+    const quizObj = quizzes.find((quiz) => quiz.id === q.quizId);
     return quizObj?.gradeId === studentGradeId && q.passed;
   }).length;
 
   // Categorize assessments into Available, Upcoming, and Completed
   const now = new Date();
-  const completedAssessments: { quiz: any; result: any }[] = [];
-  const availableAssessments: any[] = [];
-  const upcomingAssessments: any[] = [];
+  const completedAssessments: { quiz: Quiz; result: QuizResult }[] = [];
+  const availableAssessments: Quiz[] = [];
+  const upcomingAssessments: Quiz[] = [];
 
-  quizzes.forEach(quiz => {
+  for (const quiz of quizzes) {
     const result = progress.quizResults[quiz.id];
     if (result) {
       completedAssessments.push({ quiz, result });
@@ -143,12 +146,13 @@ export default function StudentDashboardPage() {
       }
     }
 
+    if (isClosed) continue;
     if (isUpcoming) {
       upcomingAssessments.push(quiz);
     } else {
       availableAssessments.push(quiz);
     }
-  });
+  }
 
   return (
     <GradeWorldEnvironment tier={theme.tier}>
@@ -166,7 +170,7 @@ export default function StudentDashboardPage() {
                     {gradeObj?.name} · {theme.tierTag}
                   </span>
                   <span className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full bg-amber-50 text-amber-900 border border-amber-200">
-                    Batch: {profile.academicBatch || '2025–2026'}
+                    Batch: {profile.academicBatch || 'Not assigned'}
                   </span>
                   {profile.classGroup && (
                     <span className="text-[11px] text-[#706b63] font-medium">
@@ -195,6 +199,9 @@ export default function StudentDashboardPage() {
                 </button>
               </div>
             </div>
+
+            {catalogError && <div role="alert" className="border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900">{catalogError}</div>}
+            {catalogLoading && <p className="text-xs text-[#706b63]">Loading your published curriculum…</p>}
 
             {/* CONTINUE LEARNING SECTION */}
             <section className="space-y-3">
@@ -319,6 +326,17 @@ export default function StudentDashboardPage() {
                 <p className="text-xs opacity-75 mt-1">{totalPassedQuizzes} met passing threshold</p>
               </div>
             </div>
+
+            <section className="flex flex-col items-start justify-between gap-5 rounded-2xl border border-[#1e2e30] bg-[#1e2e30] p-6 text-[#f6f2e9] sm:flex-row sm:items-center sm:p-8">
+              <div className="max-w-2xl space-y-2">
+                <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8a471]"><Sparkles className="h-3.5 w-3.5" /> RAH learning companion</p>
+                <h2 className="font-serif-heading text-2xl font-normal">A useful next step, right when you need one.</h2>
+                <p className="text-sm leading-relaxed text-[#d2d4cf]">Ask about a lesson, practise a tricky skill, or explain what you know out loud.</p>
+              </div>
+              <Link href="/rah" className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#d8a471] px-5 py-3 text-xs font-bold text-[#171819] transition-colors hover:bg-[#e8b57c]">
+                Learn with RAH <ArrowRight className="h-4 w-4" />
+              </Link>
+            </section>
 
             {/* MY COURSES SECTION */}
             <section className="space-y-6">

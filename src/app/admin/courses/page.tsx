@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Course, Subject, Grade } from '@/types';
+import { Course, Subject } from '@/types';
 import { ContentService } from '@/lib/content';
-import { BookOpen, Plus, Edit2, Trash2, X, Filter, Search, ShieldCheck } from 'lucide-react';
+import { BookOpen, Plus, Edit2, Trash2, X, Filter, Search } from 'lucide-react';
 
 export default function AdminCoursesPage() {
   const grades = ContentService.getGrades();
@@ -13,17 +13,41 @@ export default function AdminCoursesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Partial<Course> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const refreshData = () => {
-    setCourses(ContentService.getCourses());
+  const refreshData = async () => {
+    setLoading(true);
+    setErrorMessage('');
+    try {
+      setCourses(await ContentService.loadCourses(undefined, 'all'));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to load courses from the database.');
+    }
     setSubjects(ContentService.getSubjects());
+    setLoading(false);
   };
 
   useEffect(() => {
-    refreshData();
+    let active = true;
+    ContentService.loadCourses(undefined, 'all')
+      .then((loadedCourses) => {
+        if (!active) return;
+        setCourses(loadedCourses);
+        setErrorMessage('');
+      })
+      .catch((error: unknown) => {
+        if (active) setErrorMessage(error instanceof Error ? error.message : 'Unable to load courses from the database.');
+      })
+      .finally(() => {
+        if (!active) return;
+        setSubjects(ContentService.getSubjects());
+        setLoading(false);
+      });
+    return () => { active = false; };
   }, []);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCourse?.title || !editingCourse?.subjectId || !editingCourse?.gradeId) return;
 
@@ -39,11 +63,11 @@ export default function AdminCoursesPage() {
       shortDescription: editingCourse.shortDescription || '',
       description: editingCourse.description || '',
       thumbnail: editingCourse.thumbnail || 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=800&q=80',
-      level: (editingCourse.level as any) || 'Beginner',
+      level: editingCourse.level || 'Beginner',
       duration: editingCourse.duration || '2h 30m',
       lessonCount: editingCourse.chapters ? editingCourse.chapters.reduce((acc, ch) => acc + ch.lessons.length, 0) : (editingCourse.lessonCount || 4),
-      rating: editingCourse.rating || 4.9,
-      studentsEnrolled: editingCourse.studentsEnrolled || 1200,
+      rating: editingCourse.rating ?? 0,
+      studentsEnrolled: editingCourse.studentsEnrolled ?? 0,
       featured: editingCourse.featured ?? true,
       updatedAt: new Date().toISOString().split('T')[0],
       instructor: editingCourse.instructor || {
@@ -63,16 +87,24 @@ export default function AdminCoursesPage() {
       ]
     };
 
-    ContentService.saveCourse(courseToSave);
-    refreshData();
+    const result = await ContentService.saveCourse(courseToSave);
+    if (!result.success) {
+      setErrorMessage(result.error || 'Unable to save course.');
+      return;
+    }
     setIsModalOpen(false);
     setEditingCourse(null);
+    await refreshData();
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this course? Students in this grade will no longer be able to access it.')) {
-      ContentService.deleteCourse(id);
-      refreshData();
+      const result = await ContentService.deleteCourse(id);
+      if (!result.success) {
+        setErrorMessage(result.error || 'Unable to delete course.');
+        return;
+      }
+      await refreshData();
     }
   };
 
@@ -116,6 +148,9 @@ export default function AdminCoursesPage() {
           <Plus className="w-4 h-4" /> Create Course for Grade
         </button>
       </div>
+
+      {errorMessage && <div role="alert" className="border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900">{errorMessage}</div>}
+      {loading && <p className="text-xs text-slate-500">Loading courses from the database…</p>}
 
       {/* FILTER & SEARCH */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-center gap-4">
@@ -298,7 +333,7 @@ export default function AdminCoursesPage() {
                   <label className="font-bold text-slate-700">Level Track</label>
                   <select
                     value={editingCourse.level || 'Beginner'}
-                    onChange={(e: any) => setEditingCourse({ ...editingCourse, level: e.target.value })}
+                    onChange={(e) => setEditingCourse({ ...editingCourse, level: e.target.value as Course['level'] })}
                     className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 text-xs focus:outline-none focus:border-blue-600"
                   >
                     <option value="Beginner">Beginner</option>

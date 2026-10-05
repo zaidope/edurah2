@@ -7,22 +7,35 @@ import { ProgressService } from '@/lib/progress';
 
 export default function AdminSettingsPage() {
   const [msg, setMsg] = useState('');
+  const [exporting, setExporting] = useState(false);
 
-  const handleExport = () => {
-    const data = {
-      subjects: ContentService.getSubjects(),
-      courses: ContentService.getCourses(),
-      quizzes: ContentService.getQuizzes(),
-      exportedAt: new Date().toISOString()
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `edurah_content_backup_${Date.now()}.json`;
-    a.click();
-    setMsg('Content JSON backup exported successfully!');
-    setTimeout(() => setMsg(''), 3000);
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const [courses, quizzes] = await Promise.all([
+        ContentService.loadCourses(undefined, 'all'),
+        ContentService.loadQuizzes(undefined, undefined, 'all'),
+      ]);
+      const data = {
+        subjects: ContentService.getSubjects(),
+        courses,
+        quizzes,
+        exportedAt: new Date().toISOString()
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `edurah_content_backup_${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMsg('Production content JSON backup exported successfully.');
+      setTimeout(() => setMsg(''), 3000);
+    } catch (error: unknown) {
+      setMsg(error instanceof Error ? error.message : 'Could not export production content.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleResetProgress = () => {
@@ -59,9 +72,10 @@ export default function AdminSettingsPage() {
           </div>
           <button
             onClick={handleExport}
+            disabled={exporting}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium shadow-xs cursor-pointer"
           >
-            <Download className="w-4 h-4 text-white" /> Export JSON
+            <Download className="w-4 h-4 text-white" /> {exporting ? 'Exporting…' : 'Export JSON'}
           </button>
         </div>
       </div>

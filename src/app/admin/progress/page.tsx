@@ -2,44 +2,113 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { UserProfile, Course, Grade } from '@/types';
-import { AuthService } from '@/lib/auth';
+import { UserProfile } from '@/types';
 import { ContentService } from '@/lib/content';
+import { supabase } from '@/lib/supabase/client';
 import {
   TrendingUp,
   Filter,
   Search,
   BookOpen,
   Award,
-  Users,
-  CheckCircle2,
-  GraduationCap,
-  ArrowRight
+  Users
 } from 'lucide-react';
 
 export default function AdminProgressPage() {
   const grades = ContentService.getGrades();
-  const courses = ContentService.getCourses();
+  const [courses, setCourses] = useState<Array<{ id: string; title: string; gradeId: string; lessonCount: number }>>([]);
   const [students, setStudents] = useState<UserProfile[]>([]);
+  const [lessonProgress, setLessonProgress] = useState<Array<{ user_id: string; course_id: string; completed: boolean }>>([]);
+  const [quizResults, setQuizResults] = useState<Array<{ user_id: string; course_id: string | null; percentage: number }>>([]);
   const [filterGrade, setFilterGrade] = useState<string>('all');
   const [filterBatch, setFilterBatch] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'students' | 'grades' | 'courses'>('grades');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     async function loadData() {
       setLoading(true);
-      const allStudents = await AuthService.getStudents();
-      setStudents(allStudents);
+      const [studentResponse, courseResponse, progressResponse, quizResponse] = await Promise.all([
+        supabase.from('profiles').select('id,fullName:full_name,email,studentId:student_id,role,gradeId:grade_id,academicBatch:academic_batch,classGroup:class_group,isActive:is_active,createdAt:created_at,updatedAt:updated_at').eq('role', 'student').eq('is_active', true).order('full_name'),
+        supabase.from('courses').select('id,title,gradeId:grade_id,lessonCount:lesson_count').eq('status', 'published').order('position'),
+        supabase.from('lesson_progress').select('user_id,course_id,completed'),
+        supabase.from('quiz_results').select('user_id,course_id,percentage'),
+      ]);
+      if (studentResponse.error || courseResponse.error || progressResponse.error || quizResponse.error) {
+        setLoadError('Progress data could not be loaded from the production database.');
+        setStudents([]);
+        setCourses([]);
+        setLessonProgress([]);
+        setQuizResults([]);
+      } else {
+        setLoadError('');
+        setStudents((studentResponse.data || []).map((record) => ({
+          id: record.id,
+          fullName: record.fullName,
+          email: record.email,
+          studentId: record.studentId || '',
+          role: record.role as UserProfile['role'],
+          gradeId: record.gradeId || undefined,
+          academicBatch: record.academicBatch || undefined,
+          classGroup: record.classGroup || undefined,
+          isActive: record.isActive,
+          createdAt: record.createdAt,
+          updatedAt: record.updatedAt,
+        })));
+        setCourses((courseResponse.data || []).map((course) => ({
+          id: course.id,
+          title: course.title,
+          gradeId: course.gradeId,
+          lessonCount: Number(course.lessonCount) || 0,
+        })));
+        setLessonProgress(progressResponse.data || []);
+        setQuizResults(quizResponse.data || []);
+      }
       setLoading(false);
     }
     loadData();
   }, []);
 
+  const getGradeProgress = (gradeId: string) => {
+    const gradeStudents = students.filter((student) => student.gradeId === gradeId);
+    const gradeCourses = courses.filter((course) => course.gradeId === gradeId);
+    const totalLessons = gradeCourses.reduce((sum, course) => sum + course.lessonCount, 0) * gradeStudents.length;
+    const courseIds = new Set(gradeCourses.map((course) => course.id));
+    const studentIds = new Set(gradeStudents.map((student) => student.id));
+    const completed = lessonProgress.filter((row) => row.completed && courseIds.has(row.course_id) && studentIds.has(row.user_id)).length;
+    return totalLessons ? Math.round((completed / totalLessons) * 100) : 0;
+  };
+
+  const getCourseProgress = (courseId: string, gradeId: string) => {
+    const courseStudents = students.filter((student) => student.gradeId === gradeId);
+    const studentIds = new Set(courseStudents.map((student) => student.id));
+    const enrolled = courseStudents.length;
+    const lessonCount = courses.find((course) => course.id === courseId)?.lessonCount || 0;
+    const denominator = enrolled * lessonCount;
+    const completed = lessonProgress.filter((row) => row.course_id === courseId && row.completed && studentIds.has(row.user_id)).length;
+    return denominator ? Math.round((completed / denominator) * 100) : 0;
+  };
+
+  const getStudentProgress = (student: UserProfile) => {
+    const studentCourses = courses.filter((course) => course.gradeId === student.gradeId);
+    const totalLessons = studentCourses.reduce((sum, course) => sum + course.lessonCount, 0);
+    const courseIds = new Set(studentCourses.map((course) => course.id));
+    const completed = lessonProgress.filter((row) => row.user_id === student.id && row.completed && courseIds.has(row.course_id)).length;
+    return totalLessons ? Math.round((completed / totalLessons) * 100) : 0;
+  };
+
+  const getQuizAverage = (studentIds: Set<string>, courseId?: string) => {
+    const results = quizResults.filter((result) => studentIds.has(result.user_id) && (!courseId || result.course_id === courseId));
+    return results.length ? Math.round(results.reduce((sum, result) => sum + Number(result.percentage || 0), 0) / results.length) : null;
+  };
+
+  const availableBatches = [...new Set(students.map((student) => student.academicBatch || 'Unassigned'))].sort();
+
   const filteredStudents = students.filter(s => {
     const matchesGrade = filterGrade === 'all' || s.gradeId === filterGrade;
-    const matchesBatch = filterBatch === 'all' || (s.academicBatch || '2025–2026') === filterBatch;
+    const matchesBatch = filterBatch === 'all' || (s.academicBatch || 'Unassigned') === filterBatch;
     const matchesSearch = !searchQuery.trim() ||
       s.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       s.studentId.toLowerCase().includes(searchQuery.toLowerCase());
@@ -55,7 +124,7 @@ export default function AdminProgressPage() {
             <TrendingUp className="w-6 h-6 text-blue-600" /> Academic Progress & Performance
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Global monitoring of lesson completions, milestone percentages, and quiz performance across grades.
+            Recorded lesson completion across active students and published courses.
           </p>
         </div>
 
@@ -87,6 +156,9 @@ export default function AdminProgressPage() {
           </button>
         </div>
       </div>
+
+      {loadError && <div role="alert" className="border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900">{loadError}</div>}
+      {loading && <p className="text-xs text-slate-500">Loading production progress records…</p>}
 
       {/* FILTER CONTROLS */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-center gap-4">
@@ -120,9 +192,7 @@ export default function AdminProgressPage() {
             className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none"
           >
             <option value="all">All Batches</option>
-            <option value="2025–2026">2025–2026</option>
-            <option value="2026–2027">2026–2027</option>
-            <option value="2024–2025">2024–2025</option>
+            {availableBatches.map((batch) => <option key={batch} value={batch}>{batch}</option>)}
           </select>
         </div>
       </div>
@@ -132,10 +202,11 @@ export default function AdminProgressPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {grades
             .filter(g => filterGrade === 'all' || g.id === filterGrade)
-            .map((grade, idx) => {
+            .map((grade) => {
               const gradeStudents = students.filter(s => s.gradeId === grade.id);
               const gradeCourses = courses.filter(c => c.gradeId === grade.id);
-              const avgProgress = Math.round(((idx * 19 + 62) % 35) + 60);
+              const avgProgress = getGradeProgress(grade.id);
+              const quizAverage = getQuizAverage(new Set(gradeStudents.map((student) => student.id)));
 
               return (
                 <div key={grade.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
@@ -155,7 +226,7 @@ export default function AdminProgressPage() {
 
                   <div className="space-y-1.5 pt-2 border-t border-slate-100">
                     <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
-                      <span>Cohort Mastery Level</span>
+                      <span>Lesson completion rate</span>
                       <span>{avgProgress}% Average</span>
                     </div>
                     <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -171,6 +242,10 @@ export default function AdminProgressPage() {
                     <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center gap-2">
                       <BookOpen className="w-4 h-4 text-emerald-600" />
                       <span>{gradeCourses.length} Courses</span>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center gap-2 col-span-2">
+                      <Award className="w-4 h-4 text-amber-600" />
+                      <span>{quizAverage === null ? 'No quiz results recorded' : `${quizAverage}% Average Quiz Score`}</span>
                     </div>
                   </div>
                 </div>
@@ -190,15 +265,17 @@ export default function AdminProgressPage() {
                   <th className="px-6 py-3.5">Assigned Grade</th>
                   <th className="px-6 py-3.5">Curriculum Units</th>
                   <th className="px-6 py-3.5">Completion Rate</th>
-                  <th className="px-6 py-3.5">Rating</th>
+                  <th className="px-6 py-3.5">Average Quiz Score</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {courses
                   .filter(c => filterGrade === 'all' || c.gradeId === filterGrade)
-                  .map((c, idx) => {
+                  .map((c) => {
                     const gradeObj = grades.find(g => g.id === c.gradeId);
-                    const rate = Math.round(((idx * 17 + 55) % 35) + 60);
+                    const rate = getCourseProgress(c.id, c.gradeId);
+                    const courseStudentIds = new Set(students.filter((student) => student.gradeId === c.gradeId).map((student) => student.id));
+                    const quizAverage = getQuizAverage(courseStudentIds, c.id);
 
                     return (
                       <tr key={c.id} className="hover:bg-slate-50/70 transition-colors">
@@ -211,7 +288,7 @@ export default function AdminProgressPage() {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-slate-600">
-                          {c.chapters.length} Modules · {c.lessonCount} Lessons
+                          {c.lessonCount} Lessons
                         </td>
                         <td className="px-6 py-4 min-w-[160px]">
                           <div className="space-y-1">
@@ -221,9 +298,7 @@ export default function AdminProgressPage() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4 font-bold text-amber-600">
-                          ★ {c.rating}
-                        </td>
+                        <td className="px-6 py-4 font-semibold text-slate-700">{quizAverage === null ? 'No results' : `${quizAverage}%`}</td>
                       </tr>
                     );
                   })}
@@ -245,13 +320,15 @@ export default function AdminProgressPage() {
                   <th className="px-6 py-3.5">Academic Batch</th>
                   <th className="px-6 py-3.5">Student ID</th>
                   <th className="px-6 py-3.5">Grade Progress</th>
+                  <th className="px-6 py-3.5">Average Quiz Score</th>
                   <th className="px-6 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredStudents.map((s, idx) => {
+                {filteredStudents.map((s) => {
                   const gradeObj = grades.find(g => g.id === s.gradeId);
-                  const progressPct = Math.round(((idx * 23 + 40) % 55) + 45);
+                  const progressPct = getStudentProgress(s);
+                  const quizAverage = getQuizAverage(new Set([s.id]));
 
                   return (
                     <tr key={s.id} className="hover:bg-slate-50/70 transition-colors">
@@ -265,7 +342,7 @@ export default function AdminProgressPage() {
                       </td>
                       <td className="px-6 py-4">
                         <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                          {s.academicBatch || '2025–2026'}
+                          {s.academicBatch || 'Unassigned'}
                         </span>
                       </td>
                       <td className="px-6 py-4 font-mono font-semibold text-slate-700">
@@ -279,6 +356,7 @@ export default function AdminProgressPage() {
                           </div>
                         </div>
                       </td>
+                      <td className="px-6 py-4 font-semibold text-slate-700">{quizAverage === null ? 'No results' : `${quizAverage}%`}</td>
                       <td className="px-6 py-4 text-right">
                         <Link
                           href={`/admin/students/${s.id}`}
